@@ -1,0 +1,222 @@
+[
+  {
+    "fullName": "tre",
+    "trigramme": "ADA",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "hélico",
+    "phone": "066125174",
+    "email": "olivierandrea@protonmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "re",
+    "trigramme": "BBT",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "hélico",
+    "phone": "060310645",
+    "email": "eric.barbarat@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "fds",
+    "trigramme": "BLT",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "hélico",
+    "phone": "077458582",
+    "email": "jp.bolliet@yahoo.fr",
+    "isAdmin": false
+  },
+  {
+    "fullName": "dsf",
+    "trigramme": "BRG",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "hélico",
+    "phone": "066009258",
+    "email": "1671az@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "fdsfsd",
+    "trigramme": "CTN",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "hélico",
+    "phone": "074814497",
+    "email": "l.charanton@laposte.net",
+    "isAdmin": false
+  },
+  {
+    "fullName": "rez",
+    "trigramme": "ZWG",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "hélico",
+    "phone": "066907175",
+    "email": "didier.zwang@gmpa.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "rezr",
+    "trigramme": "CBO",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "avion",
+    "phone": "074546778",
+    "email": "laurent.cabello1@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "fdsfsd",
+    "trigramme": "DPS",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "avion",
+    "phone": "077632241",
+    "email": "groodep@yahoo.fr",
+    "isAdmin": true
+  },
+  {
+    "fullName": "dsfsd",
+    "trigramme": "LCM",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "avion",
+    "phone": "066463285",
+    "email": "marclecam@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "rere",
+    "trigramme": "LDX",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "avion",
+    "phone": "074150741",
+    "email": "jmldxlbv@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "wffrds",
+    "trigramme": "MRE",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "avion",
+    "phone": "077929396",
+    "email": "fabrice.moire@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "fds",
+    "trigramme": "BRY",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "avion",
+    "phone": "066077220",
+    "email": "jpbury09@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "bhgfyt",
+    "trigramme": "ALD",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "A+H",
+    "phone": "062295473",
+    "email": "gap.servitude@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "fcw",
+    "trigramme": "BRL",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "A+H",
+    "phone": "062452529",
+    "email": "gaphelicocamo@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "ers",
+    "trigramme": "BTO",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "avion",
+    "phone": "077364031",
+    "email": "gberanto@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "rerzrez",
+    "trigramme": "PNI",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "hélico",
+    "phone": "062779949",
+    "email": " alainpennacchi1966@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "vcxvcx",
+    "trigramme": "POE",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "hélico",
+    "phone": "065607381",
+    "email": "pestou973@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "fdsgh",
+    "trigramme": "PRE",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "hélico",
+    "phone": "0625318378",
+    "email": "xavierparegap70@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "oiu",
+    "trigramme": "PVT",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "hélico",
+    "phone": "062726554",
+    "email": "vil1bundy@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "jkiuyh",
+    "trigramme": "RHN",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "avion",
+    "phone": "077969550",
+    "email": "papoorhn@gmail.com",
+    "isAdmin": false
+  },
+  {
+    "fullName": "iuyf",
+    "trigramme": "ZDR",
+    "passwordHash": "1234",
+    "role": "mécano",
+    "group": "hélico",
+    "phone": "076539444",
+    "email": "mateuscaf974@gmail.com",
+    "isAdmin": false
+  },
+{
+    "fullName": "iutretyf",
+    "trigramme": "ABC",
+    "passwordHash": "1234",
+    "role": "pilote",
+    "group": "avion",
+    "phone": "077632241",
+    "email": "grodep974@gmail.com",
+    "isAdmin": true
+  }
+]
