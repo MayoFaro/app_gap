@@ -4,7 +4,7 @@ import 'app_database.dart';
 
 part 'notification_dao.g.dart';
 
-@DriftAccessor(tables: [Notifications])
+@DriftAccessor(tables: [Notifications]) //Undefined name 'Notifications'.
 class NotificationDao extends DatabaseAccessor<AppDatabase> with _$NotificationDaoMixin {
   NotificationDao(super.db);
 
@@ -13,13 +13,13 @@ class NotificationDao extends DatabaseAccessor<AppDatabase> with _$NotificationD
     return (select(notifications)
       ..where((tbl) => tbl.group.equals(group))
       ..orderBy([
-            (t) => OrderingTerm(expression: t.timestamp, mode: OrderingMode.desc),
+            (t) => OrderingTerm(expression: t.timestamp, mode: OrderingMode.desc), //The getter 'timestamp' isn't defined for the type 'HasResultSet'.
       ]))
         .get();
   }
 
   /// Insère une notification
-  Future<int> insertNotification(NotificationsCompanion entry) {
+  Future<int> insertNotification(NotificationsCompanion entry) { //Undefined class 'NotificationsCompanion'.
     return into(notifications).insert(entry);
   }
 

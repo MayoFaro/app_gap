@@ -4,7 +4,7 @@ import 'app_database.dart';
 
 part 'chef_message_dao.g.dart';
 
-@DriftAccessor(tables: [ChefMessages])
+@DriftAccessor(tables: [ChefMessages]) //Undefined name 'ChefMessages'.
 class ChefMessageDao extends DatabaseAccessor<AppDatabase> with _$ChefMessageDaoMixin {
   ChefMessageDao(super.db);
 
@@ -18,7 +18,7 @@ class ChefMessageDao extends DatabaseAccessor<AppDatabase> with _$ChefMessageDao
   }
 
   /// Insère un nouveau message
-  Future<int> insertMessage(ChefMessagesCompanion entry) {
+  Future<int> insertMessage(ChefMessagesCompanion entry) { //Undefined class 'ChefMessagesCompanion'.
     return into(chefMessages).insert(entry);
   }
 

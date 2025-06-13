@@ -19,7 +19,7 @@ class Leg {
 
 class _TripFuelScreenState extends State<TripFuelScreen> {
   final List<Leg> _legs = [Leg()];
-  List<Airport> _airports = [];
+  List<Airport> _airports = []; //The name 'Airport' isn't a type, so it can't be used as a type argument.
   int _totalMinutes = 0;
   double _totalFuel = 0;
 

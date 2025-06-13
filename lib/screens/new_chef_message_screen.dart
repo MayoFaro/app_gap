@@ -1,12 +1,11 @@
-// lib/screens/new_chef_message_screen.dart
 import 'package:flutter/material.dart';
-import 'package:drift/drift.dart' hide Column; // pour Value
-import '../data/app_database.dart'; // pour ChefMessagesCompanion
-import '../data/chef_message_dao.dart';
+import '../data/app_database.dart';       // Pour ChefMessagesCompanion
+import '../data/chef_message_dao.dart';   // Pour interaction avec la DAO
 
+/// Écran de création d'un nouveau message du chef
 class NewChefMessageScreen extends StatefulWidget {
   final ChefMessageDao dao;
-  const NewChefMessageScreen({super.key, required this.dao});
+  const NewChefMessageScreen({Key? key, required this.dao}) : super(key: key);
 
   @override
   State<NewChefMessageScreen> createState() => _NewChefMessageScreenState();
@@ -19,62 +18,57 @@ class _NewChefMessageScreenState extends State<NewChefMessageScreen> {
   String _group = 'avion';
   bool _loading = false;
 
+  /// Valide et envoie le message vers la base
   Future<void> _sendMessage() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
+
+    // Création de la companion pour l'insertion
     final entry = ChefMessagesCompanion.insert(
-      content: Value(_contentController.text.trim()),
+      content: _contentController.text.trim(),
       authorRole: _authorRole,
       group: _group,
       timestamp: DateTime.now(),
     );
+
     await widget.dao.insertMessage(entry);
     Navigator.of(context).pop();
   }
 
   @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nouveau message')),
+      appBar: AppBar(title: const Text('Nouveau message du Chef')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              DropdownButtonFormField<String>(
-                value: _authorRole,
-                items: const [
-                  DropdownMenuItem(value: 'chef_ops', child: Text('chef_ops')),
-                  DropdownMenuItem(value: 'chef', child: Text('chef')),
-                  DropdownMenuItem(value: 'adjchefops', child: Text('adjchefops')),
-                ],
-                onChanged: (v) => setState(() => _authorRole = v!),
-                decoration: const InputDecoration(labelText: 'Rôle de l’auteu­ r'),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _group,
-                items: const [
-                  DropdownMenuItem(value: 'avion', child: Text('Avion')),
-                  DropdownMenuItem(value: 'helico', child: Text('Hélico')),
-                  DropdownMenuItem(value: 'both', child: Text('Les deux')),
-                ],
-                onChanged: (v) => setState(() => _group = v!),
-                decoration: const InputDecoration(labelText: 'Groupe destinataire'),
-              ),
-              const SizedBox(height: 12),
               TextFormField(
                 controller: _contentController,
-                decoration: const InputDecoration(labelText: 'Contenu'),
-                maxLines: 3,
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Le contenu ne peut être vide'
-                    : null,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: 'Contenu',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Le contenu ne peut pas être vide';
+                  }
+                  return null;
+                },
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               _loading
-                  ? const CircularProgressIndicator()
+                  ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton(
                 onPressed: _sendMessage,
                 child: const Text('Envoyer'),

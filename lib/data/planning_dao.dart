@@ -1,23 +1,55 @@
 // lib/data/planning_dao.dart
+
 import 'package:drift/drift.dart';
 import 'app_database.dart';
 
 part 'planning_dao.g.dart';
 
-@DriftAccessor(tables: [PlanningEvents])
+@DriftAccessor(tables: [Users, PlanningEvents])
 class PlanningDao extends DatabaseAccessor<AppDatabase> with _$PlanningDaoMixin {
-  PlanningDao(super.db);
+  PlanningDao(AppDatabase db) : super(db);
 
-  /// Récupère tous les événements du planning
-  Future<List<PlanningEvent>> getAllEvents() => select(planningEvents).get();
+  /// Écoute en temps réel les événements pour un utilisateur donné.
+  Stream<List<PlanningEvent>> watchEventsForUser(String user) {
+    return (select(planningEvents)
+      ..where((e) => e.user.equals(user)))
+        .watch();
+  }
 
-  /// Insère un nouvel événement
-  Future<int> insertEvent(PlanningEventsCompanion entry) => into(planningEvents).insert(entry);
+  /// Insère un événement (1-day ou X-days).
+  Future<void> insertEvent({
+    required String user,
+    required String typeEvent,
+    required DateTime dateStart,
+    required DateTime dateEnd,
+  }) {
+    return into(planningEvents).insert(
+      PlanningEventsCompanion.insert(
+        user: user,
+        typeEvent: typeEvent,
+        dateStart: dateStart,
+        dateEnd: dateEnd,
+      ),
+    );
+  }
 
-  /// Met à jour un événement existant
-  Future<bool> updateEvent(PlanningEvent event) => update(planningEvents).replace(event);
+  /// Met à jour les bornes d’un événement existant.
+  /// Retourne le nombre de lignes affectées.
+  Future<int> updateEvent({
+    required int id,
+    required DateTime dateStart,
+    required DateTime dateEnd,
+  }) {
+    return (update(planningEvents)..where((e) => e.id.equals(id))).write(
+      PlanningEventsCompanion(
+        dateStart: Value(dateStart),
+        dateEnd: Value(dateEnd),
+      ),
+    );
+  }
 
-  /// Supprime un événement par ID
-  Future<int> deleteEvent(int id) =>
-      (delete(planningEvents)..where((tbl) => tbl.id.equals(id))).go();
+  /// Supprime un événement par son identifiant.
+  Future<int> deleteEvent(int id) {
+    return (delete(planningEvents)..where((e) => e.id.equals(id))).go();
+  }
 }

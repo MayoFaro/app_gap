@@ -1,4 +1,3 @@
-// lib/main.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';            // pour rootBundle
@@ -15,17 +14,30 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // Initialisation de la BDD et importation de users.json
+  // Initialisation de la BDD
   final db = AppDatabase();
-  final existingUsers = await db.select(db.users).get();
-  if (existingUsers.isEmpty) {
-    final raw = await rootBundle.loadString('assets/users.json');
-    final List<dynamic> list = json.decode(raw);
-    for (var u in list) {
+
+  // Charger JSON des users
+  final raw = await rootBundle.loadString('assets/users.json');
+  final List<dynamic> jsonList = json.decode(raw);
+
+  // Comptage actuel dans la BDD
+  final existing = await db.select(db.users).get();
+  debugPrint('DEBUG main: DB user count = ${existing.length}');
+  debugPrint('DEBUG main: JSON user count = ${jsonList.length}');
+
+  // Synchronisation conditionnelle si BDD incomplète
+  if (existing.length < jsonList.length) {
+    debugPrint('INFO main: synchronisation JSON -> BDD');
+    // Vider la table users
+    await db.delete(db.users).go();
+    // Réinsérer tous les utilisateurs du JSON
+    for (final u in jsonList) {
       await db.into(db.users).insert(
         UsersCompanion.insert(
           trigramme:    u['trigramme'] as String,
           passwordHash: u['passwordHash'] as String,
+          fonction:     u['fonction'] as String,   // Nouvelle colonne 'fonction'
           role:         u['role'] as String,
           group:        u['group'] as String,
           fullName:     Value(u['fullName'] as String),
@@ -35,8 +47,11 @@ Future<void> main() async {
         ),
       );
     }
+  } else {
+    debugPrint('INFO main: BDD déjà synchronisée');
   }
 
+  // Lancement de l'application avec la BDD prête
   runApp(AppGAP(db: db));
 }
 
