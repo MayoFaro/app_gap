@@ -30,7 +30,7 @@ class _TripFuelScreenState extends State<TripFuelScreen> {
   }
 
   Future<void> _loadAirports() async {
-    _airports = await widget.db.select(widget.db.airports).get();
+    _airports = await widget.db.select(widget.db.airports).get();//The getter 'airports' isn't defined for the type 'AppDatabase'.
     setState(() {});
   }
 

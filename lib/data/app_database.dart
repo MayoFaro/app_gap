@@ -34,8 +34,11 @@ class Missions extends Table {
   TextColumn get vecteur         => text()();
   TextColumn get pilote1         => text()();
   TextColumn get pilote2         => text().nullable()();
+  TextColumn get pilote3         => text().nullable()();
   TextColumn get destinationCode => text()();
   TextColumn get description     => text().nullable()();
+  DateTimeColumn get actualDeparture => dateTime().nullable()();
+  DateTimeColumn get actualArrival   => dateTime().nullable()();
 }
 
 /// Table des événements de planification
@@ -66,6 +69,15 @@ class Notifications extends Table {
   DateTimeColumn get timestamp => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Table des aéroports (pour TripFuelScreen)
+class Airports extends Table {
+  TextColumn get code => text().withLength(min: 4, max: 4)();
+  TextColumn get name => text()();
+
+  @override
+  Set<Column> get primaryKey => {code};
+}
+
 /// Base de données principale pour appGAP
 @DriftDatabase(
   tables: [
@@ -74,6 +86,7 @@ class Notifications extends Table {
     PlanningEvents,
     ChefMessages,
     Notifications,
+    Airports,
   ],
   daos: [
     MissionDao,
@@ -86,7 +99,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -94,7 +107,7 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
     },
     onUpgrade: (Migrator m, int from, int to) async {
-      // Recréation automatique des tables manquantes et des colonnes
+      // createAll() ajoute automatiquement tables/colonnes manquantes
       await m.createAll();
     },
   );

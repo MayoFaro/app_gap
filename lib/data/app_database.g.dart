@@ -654,6 +654,17 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pilote3Meta = const VerificationMeta(
+    'pilote3',
+  );
+  @override
+  late final GeneratedColumn<String> pilote3 = GeneratedColumn<String>(
+    'pilote3',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _destinationCodeMeta = const VerificationMeta(
     'destinationCode',
   );
@@ -676,6 +687,30 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _actualDepartureMeta = const VerificationMeta(
+    'actualDeparture',
+  );
+  @override
+  late final GeneratedColumn<DateTime> actualDeparture =
+      GeneratedColumn<DateTime>(
+        'actual_departure',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _actualArrivalMeta = const VerificationMeta(
+    'actualArrival',
+  );
+  @override
+  late final GeneratedColumn<DateTime> actualArrival =
+      GeneratedColumn<DateTime>(
+        'actual_arrival',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -683,8 +718,11 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
     vecteur,
     pilote1,
     pilote2,
+    pilote3,
     destinationCode,
     description,
+    actualDeparture,
+    actualArrival,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -731,6 +769,12 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
         pilote2.isAcceptableOrUnknown(data['pilote2']!, _pilote2Meta),
       );
     }
+    if (data.containsKey('pilote3')) {
+      context.handle(
+        _pilote3Meta,
+        pilote3.isAcceptableOrUnknown(data['pilote3']!, _pilote3Meta),
+      );
+    }
     if (data.containsKey('destination_code')) {
       context.handle(
         _destinationCodeMeta,
@@ -748,6 +792,24 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
         description.isAcceptableOrUnknown(
           data['description']!,
           _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('actual_departure')) {
+      context.handle(
+        _actualDepartureMeta,
+        actualDeparture.isAcceptableOrUnknown(
+          data['actual_departure']!,
+          _actualDepartureMeta,
+        ),
+      );
+    }
+    if (data.containsKey('actual_arrival')) {
+      context.handle(
+        _actualArrivalMeta,
+        actualArrival.isAcceptableOrUnknown(
+          data['actual_arrival']!,
+          _actualArrivalMeta,
         ),
       );
     }
@@ -784,6 +846,10 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
         DriftSqlType.string,
         data['${effectivePrefix}pilote2'],
       ),
+      pilote3: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pilote3'],
+      ),
       destinationCode:
           attachedDatabase.typeMapping.read(
             DriftSqlType.string,
@@ -792,6 +858,14 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
       description: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}description'],
+      ),
+      actualDeparture: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}actual_departure'],
+      ),
+      actualArrival: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}actual_arrival'],
       ),
     );
   }
@@ -808,16 +882,22 @@ class Mission extends DataClass implements Insertable<Mission> {
   final String vecteur;
   final String pilote1;
   final String? pilote2;
+  final String? pilote3;
   final String destinationCode;
   final String? description;
+  final DateTime? actualDeparture;
+  final DateTime? actualArrival;
   const Mission({
     required this.id,
     required this.date,
     required this.vecteur,
     required this.pilote1,
     this.pilote2,
+    this.pilote3,
     required this.destinationCode,
     this.description,
+    this.actualDeparture,
+    this.actualArrival,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -829,9 +909,18 @@ class Mission extends DataClass implements Insertable<Mission> {
     if (!nullToAbsent || pilote2 != null) {
       map['pilote2'] = Variable<String>(pilote2);
     }
+    if (!nullToAbsent || pilote3 != null) {
+      map['pilote3'] = Variable<String>(pilote3);
+    }
     map['destination_code'] = Variable<String>(destinationCode);
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || actualDeparture != null) {
+      map['actual_departure'] = Variable<DateTime>(actualDeparture);
+    }
+    if (!nullToAbsent || actualArrival != null) {
+      map['actual_arrival'] = Variable<DateTime>(actualArrival);
     }
     return map;
   }
@@ -846,11 +935,23 @@ class Mission extends DataClass implements Insertable<Mission> {
           pilote2 == null && nullToAbsent
               ? const Value.absent()
               : Value(pilote2),
+      pilote3:
+          pilote3 == null && nullToAbsent
+              ? const Value.absent()
+              : Value(pilote3),
       destinationCode: Value(destinationCode),
       description:
           description == null && nullToAbsent
               ? const Value.absent()
               : Value(description),
+      actualDeparture:
+          actualDeparture == null && nullToAbsent
+              ? const Value.absent()
+              : Value(actualDeparture),
+      actualArrival:
+          actualArrival == null && nullToAbsent
+              ? const Value.absent()
+              : Value(actualArrival),
     );
   }
 
@@ -865,8 +966,11 @@ class Mission extends DataClass implements Insertable<Mission> {
       vecteur: serializer.fromJson<String>(json['vecteur']),
       pilote1: serializer.fromJson<String>(json['pilote1']),
       pilote2: serializer.fromJson<String?>(json['pilote2']),
+      pilote3: serializer.fromJson<String?>(json['pilote3']),
       destinationCode: serializer.fromJson<String>(json['destinationCode']),
       description: serializer.fromJson<String?>(json['description']),
+      actualDeparture: serializer.fromJson<DateTime?>(json['actualDeparture']),
+      actualArrival: serializer.fromJson<DateTime?>(json['actualArrival']),
     );
   }
   @override
@@ -878,8 +982,11 @@ class Mission extends DataClass implements Insertable<Mission> {
       'vecteur': serializer.toJson<String>(vecteur),
       'pilote1': serializer.toJson<String>(pilote1),
       'pilote2': serializer.toJson<String?>(pilote2),
+      'pilote3': serializer.toJson<String?>(pilote3),
       'destinationCode': serializer.toJson<String>(destinationCode),
       'description': serializer.toJson<String?>(description),
+      'actualDeparture': serializer.toJson<DateTime?>(actualDeparture),
+      'actualArrival': serializer.toJson<DateTime?>(actualArrival),
     };
   }
 
@@ -889,16 +996,24 @@ class Mission extends DataClass implements Insertable<Mission> {
     String? vecteur,
     String? pilote1,
     Value<String?> pilote2 = const Value.absent(),
+    Value<String?> pilote3 = const Value.absent(),
     String? destinationCode,
     Value<String?> description = const Value.absent(),
+    Value<DateTime?> actualDeparture = const Value.absent(),
+    Value<DateTime?> actualArrival = const Value.absent(),
   }) => Mission(
     id: id ?? this.id,
     date: date ?? this.date,
     vecteur: vecteur ?? this.vecteur,
     pilote1: pilote1 ?? this.pilote1,
     pilote2: pilote2.present ? pilote2.value : this.pilote2,
+    pilote3: pilote3.present ? pilote3.value : this.pilote3,
     destinationCode: destinationCode ?? this.destinationCode,
     description: description.present ? description.value : this.description,
+    actualDeparture:
+        actualDeparture.present ? actualDeparture.value : this.actualDeparture,
+    actualArrival:
+        actualArrival.present ? actualArrival.value : this.actualArrival,
   );
   Mission copyWithCompanion(MissionsCompanion data) {
     return Mission(
@@ -907,12 +1022,21 @@ class Mission extends DataClass implements Insertable<Mission> {
       vecteur: data.vecteur.present ? data.vecteur.value : this.vecteur,
       pilote1: data.pilote1.present ? data.pilote1.value : this.pilote1,
       pilote2: data.pilote2.present ? data.pilote2.value : this.pilote2,
+      pilote3: data.pilote3.present ? data.pilote3.value : this.pilote3,
       destinationCode:
           data.destinationCode.present
               ? data.destinationCode.value
               : this.destinationCode,
       description:
           data.description.present ? data.description.value : this.description,
+      actualDeparture:
+          data.actualDeparture.present
+              ? data.actualDeparture.value
+              : this.actualDeparture,
+      actualArrival:
+          data.actualArrival.present
+              ? data.actualArrival.value
+              : this.actualArrival,
     );
   }
 
@@ -924,8 +1048,11 @@ class Mission extends DataClass implements Insertable<Mission> {
           ..write('vecteur: $vecteur, ')
           ..write('pilote1: $pilote1, ')
           ..write('pilote2: $pilote2, ')
+          ..write('pilote3: $pilote3, ')
           ..write('destinationCode: $destinationCode, ')
-          ..write('description: $description')
+          ..write('description: $description, ')
+          ..write('actualDeparture: $actualDeparture, ')
+          ..write('actualArrival: $actualArrival')
           ..write(')'))
         .toString();
   }
@@ -937,8 +1064,11 @@ class Mission extends DataClass implements Insertable<Mission> {
     vecteur,
     pilote1,
     pilote2,
+    pilote3,
     destinationCode,
     description,
+    actualDeparture,
+    actualArrival,
   );
   @override
   bool operator ==(Object other) =>
@@ -949,8 +1079,11 @@ class Mission extends DataClass implements Insertable<Mission> {
           other.vecteur == this.vecteur &&
           other.pilote1 == this.pilote1 &&
           other.pilote2 == this.pilote2 &&
+          other.pilote3 == this.pilote3 &&
           other.destinationCode == this.destinationCode &&
-          other.description == this.description);
+          other.description == this.description &&
+          other.actualDeparture == this.actualDeparture &&
+          other.actualArrival == this.actualArrival);
 }
 
 class MissionsCompanion extends UpdateCompanion<Mission> {
@@ -959,16 +1092,22 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
   final Value<String> vecteur;
   final Value<String> pilote1;
   final Value<String?> pilote2;
+  final Value<String?> pilote3;
   final Value<String> destinationCode;
   final Value<String?> description;
+  final Value<DateTime?> actualDeparture;
+  final Value<DateTime?> actualArrival;
   const MissionsCompanion({
     this.id = const Value.absent(),
     this.date = const Value.absent(),
     this.vecteur = const Value.absent(),
     this.pilote1 = const Value.absent(),
     this.pilote2 = const Value.absent(),
+    this.pilote3 = const Value.absent(),
     this.destinationCode = const Value.absent(),
     this.description = const Value.absent(),
+    this.actualDeparture = const Value.absent(),
+    this.actualArrival = const Value.absent(),
   });
   MissionsCompanion.insert({
     this.id = const Value.absent(),
@@ -976,8 +1115,11 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     required String vecteur,
     required String pilote1,
     this.pilote2 = const Value.absent(),
+    this.pilote3 = const Value.absent(),
     required String destinationCode,
     this.description = const Value.absent(),
+    this.actualDeparture = const Value.absent(),
+    this.actualArrival = const Value.absent(),
   }) : date = Value(date),
        vecteur = Value(vecteur),
        pilote1 = Value(pilote1),
@@ -988,8 +1130,11 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     Expression<String>? vecteur,
     Expression<String>? pilote1,
     Expression<String>? pilote2,
+    Expression<String>? pilote3,
     Expression<String>? destinationCode,
     Expression<String>? description,
+    Expression<DateTime>? actualDeparture,
+    Expression<DateTime>? actualArrival,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -997,8 +1142,11 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
       if (vecteur != null) 'vecteur': vecteur,
       if (pilote1 != null) 'pilote1': pilote1,
       if (pilote2 != null) 'pilote2': pilote2,
+      if (pilote3 != null) 'pilote3': pilote3,
       if (destinationCode != null) 'destination_code': destinationCode,
       if (description != null) 'description': description,
+      if (actualDeparture != null) 'actual_departure': actualDeparture,
+      if (actualArrival != null) 'actual_arrival': actualArrival,
     });
   }
 
@@ -1008,8 +1156,11 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     Value<String>? vecteur,
     Value<String>? pilote1,
     Value<String?>? pilote2,
+    Value<String?>? pilote3,
     Value<String>? destinationCode,
     Value<String?>? description,
+    Value<DateTime?>? actualDeparture,
+    Value<DateTime?>? actualArrival,
   }) {
     return MissionsCompanion(
       id: id ?? this.id,
@@ -1017,8 +1168,11 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
       vecteur: vecteur ?? this.vecteur,
       pilote1: pilote1 ?? this.pilote1,
       pilote2: pilote2 ?? this.pilote2,
+      pilote3: pilote3 ?? this.pilote3,
       destinationCode: destinationCode ?? this.destinationCode,
       description: description ?? this.description,
+      actualDeparture: actualDeparture ?? this.actualDeparture,
+      actualArrival: actualArrival ?? this.actualArrival,
     );
   }
 
@@ -1040,11 +1194,20 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     if (pilote2.present) {
       map['pilote2'] = Variable<String>(pilote2.value);
     }
+    if (pilote3.present) {
+      map['pilote3'] = Variable<String>(pilote3.value);
+    }
     if (destinationCode.present) {
       map['destination_code'] = Variable<String>(destinationCode.value);
     }
     if (description.present) {
       map['description'] = Variable<String>(description.value);
+    }
+    if (actualDeparture.present) {
+      map['actual_departure'] = Variable<DateTime>(actualDeparture.value);
+    }
+    if (actualArrival.present) {
+      map['actual_arrival'] = Variable<DateTime>(actualArrival.value);
     }
     return map;
   }
@@ -1057,8 +1220,11 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
           ..write('vecteur: $vecteur, ')
           ..write('pilote1: $pilote1, ')
           ..write('pilote2: $pilote2, ')
+          ..write('pilote3: $pilote3, ')
           ..write('destinationCode: $destinationCode, ')
-          ..write('description: $description')
+          ..write('description: $description, ')
+          ..write('actualDeparture: $actualDeparture, ')
+          ..write('actualArrival: $actualArrival')
           ..write(')'))
         .toString();
   }
@@ -2200,6 +2366,217 @@ class NotificationsCompanion extends UpdateCompanion<Notification> {
   }
 }
 
+class $AirportsTable extends Airports with TableInfo<$AirportsTable, Airport> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AirportsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 4,
+      maxTextLength: 4,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [code, name];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'airports';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Airport> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_codeMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {code};
+  @override
+  Airport map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Airport(
+      code:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}code'],
+          )!,
+      name:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}name'],
+          )!,
+    );
+  }
+
+  @override
+  $AirportsTable createAlias(String alias) {
+    return $AirportsTable(attachedDatabase, alias);
+  }
+}
+
+class Airport extends DataClass implements Insertable<Airport> {
+  final String code;
+  final String name;
+  const Airport({required this.code, required this.name});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['code'] = Variable<String>(code);
+    map['name'] = Variable<String>(name);
+    return map;
+  }
+
+  AirportsCompanion toCompanion(bool nullToAbsent) {
+    return AirportsCompanion(code: Value(code), name: Value(name));
+  }
+
+  factory Airport.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Airport(
+      code: serializer.fromJson<String>(json['code']),
+      name: serializer.fromJson<String>(json['name']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'code': serializer.toJson<String>(code),
+      'name': serializer.toJson<String>(name),
+    };
+  }
+
+  Airport copyWith({String? code, String? name}) =>
+      Airport(code: code ?? this.code, name: name ?? this.name);
+  Airport copyWithCompanion(AirportsCompanion data) {
+    return Airport(
+      code: data.code.present ? data.code.value : this.code,
+      name: data.name.present ? data.name.value : this.name,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Airport(')
+          ..write('code: $code, ')
+          ..write('name: $name')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(code, name);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Airport && other.code == this.code && other.name == this.name);
+}
+
+class AirportsCompanion extends UpdateCompanion<Airport> {
+  final Value<String> code;
+  final Value<String> name;
+  final Value<int> rowid;
+  const AirportsCompanion({
+    this.code = const Value.absent(),
+    this.name = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AirportsCompanion.insert({
+    required String code,
+    required String name,
+    this.rowid = const Value.absent(),
+  }) : code = Value(code),
+       name = Value(name);
+  static Insertable<Airport> custom({
+    Expression<String>? code,
+    Expression<String>? name,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (code != null) 'code': code,
+      if (name != null) 'name': name,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AirportsCompanion copyWith({
+    Value<String>? code,
+    Value<String>? name,
+    Value<int>? rowid,
+  }) {
+    return AirportsCompanion(
+      code: code ?? this.code,
+      name: name ?? this.name,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AirportsCompanion(')
+          ..write('code: $code, ')
+          ..write('name: $name, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2208,6 +2585,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PlanningEventsTable planningEvents = $PlanningEventsTable(this);
   late final $ChefMessagesTable chefMessages = $ChefMessagesTable(this);
   late final $NotificationsTable notifications = $NotificationsTable(this);
+  late final $AirportsTable airports = $AirportsTable(this);
   late final MissionDao missionDao = MissionDao(this as AppDatabase);
   late final PlanningDao planningDao = PlanningDao(this as AppDatabase);
   late final ChefMessageDao chefMessageDao = ChefMessageDao(
@@ -2226,6 +2604,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     planningEvents,
     chefMessages,
     notifications,
+    airports,
   ];
 }
 
@@ -2514,8 +2893,11 @@ typedef $$MissionsTableCreateCompanionBuilder =
       required String vecteur,
       required String pilote1,
       Value<String?> pilote2,
+      Value<String?> pilote3,
       required String destinationCode,
       Value<String?> description,
+      Value<DateTime?> actualDeparture,
+      Value<DateTime?> actualArrival,
     });
 typedef $$MissionsTableUpdateCompanionBuilder =
     MissionsCompanion Function({
@@ -2524,8 +2906,11 @@ typedef $$MissionsTableUpdateCompanionBuilder =
       Value<String> vecteur,
       Value<String> pilote1,
       Value<String?> pilote2,
+      Value<String?> pilote3,
       Value<String> destinationCode,
       Value<String?> description,
+      Value<DateTime?> actualDeparture,
+      Value<DateTime?> actualArrival,
     });
 
 class $$MissionsTableFilterComposer
@@ -2562,6 +2947,11 @@ class $$MissionsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get pilote3 => $composableBuilder(
+    column: $table.pilote3,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get destinationCode => $composableBuilder(
     column: $table.destinationCode,
     builder: (column) => ColumnFilters(column),
@@ -2569,6 +2959,16 @@ class $$MissionsTableFilterComposer
 
   ColumnFilters<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get actualDeparture => $composableBuilder(
+    column: $table.actualDeparture,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get actualArrival => $composableBuilder(
+    column: $table.actualArrival,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2607,6 +3007,11 @@ class $$MissionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get pilote3 => $composableBuilder(
+    column: $table.pilote3,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get destinationCode => $composableBuilder(
     column: $table.destinationCode,
     builder: (column) => ColumnOrderings(column),
@@ -2614,6 +3019,16 @@ class $$MissionsTableOrderingComposer
 
   ColumnOrderings<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get actualDeparture => $composableBuilder(
+    column: $table.actualDeparture,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get actualArrival => $composableBuilder(
+    column: $table.actualArrival,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -2642,6 +3057,9 @@ class $$MissionsTableAnnotationComposer
   GeneratedColumn<String> get pilote2 =>
       $composableBuilder(column: $table.pilote2, builder: (column) => column);
 
+  GeneratedColumn<String> get pilote3 =>
+      $composableBuilder(column: $table.pilote3, builder: (column) => column);
+
   GeneratedColumn<String> get destinationCode => $composableBuilder(
     column: $table.destinationCode,
     builder: (column) => column,
@@ -2649,6 +3067,16 @@ class $$MissionsTableAnnotationComposer
 
   GeneratedColumn<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get actualDeparture => $composableBuilder(
+    column: $table.actualDeparture,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get actualArrival => $composableBuilder(
+    column: $table.actualArrival,
     builder: (column) => column,
   );
 }
@@ -2686,16 +3114,22 @@ class $$MissionsTableTableManager
                 Value<String> vecteur = const Value.absent(),
                 Value<String> pilote1 = const Value.absent(),
                 Value<String?> pilote2 = const Value.absent(),
+                Value<String?> pilote3 = const Value.absent(),
                 Value<String> destinationCode = const Value.absent(),
                 Value<String?> description = const Value.absent(),
+                Value<DateTime?> actualDeparture = const Value.absent(),
+                Value<DateTime?> actualArrival = const Value.absent(),
               }) => MissionsCompanion(
                 id: id,
                 date: date,
                 vecteur: vecteur,
                 pilote1: pilote1,
                 pilote2: pilote2,
+                pilote3: pilote3,
                 destinationCode: destinationCode,
                 description: description,
+                actualDeparture: actualDeparture,
+                actualArrival: actualArrival,
               ),
           createCompanionCallback:
               ({
@@ -2704,16 +3138,22 @@ class $$MissionsTableTableManager
                 required String vecteur,
                 required String pilote1,
                 Value<String?> pilote2 = const Value.absent(),
+                Value<String?> pilote3 = const Value.absent(),
                 required String destinationCode,
                 Value<String?> description = const Value.absent(),
+                Value<DateTime?> actualDeparture = const Value.absent(),
+                Value<DateTime?> actualArrival = const Value.absent(),
               }) => MissionsCompanion.insert(
                 id: id,
                 date: date,
                 vecteur: vecteur,
                 pilote1: pilote1,
                 pilote2: pilote2,
+                pilote3: pilote3,
                 destinationCode: destinationCode,
                 description: description,
+                actualDeparture: actualDeparture,
+                actualArrival: actualArrival,
               ),
           withReferenceMapper:
               (p0) =>
@@ -3379,6 +3819,146 @@ typedef $$NotificationsTableProcessedTableManager =
       Notification,
       PrefetchHooks Function()
     >;
+typedef $$AirportsTableCreateCompanionBuilder =
+    AirportsCompanion Function({
+      required String code,
+      required String name,
+      Value<int> rowid,
+    });
+typedef $$AirportsTableUpdateCompanionBuilder =
+    AirportsCompanion Function({
+      Value<String> code,
+      Value<String> name,
+      Value<int> rowid,
+    });
+
+class $$AirportsTableFilterComposer
+    extends Composer<_$AppDatabase, $AirportsTable> {
+  $$AirportsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AirportsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AirportsTable> {
+  $$AirportsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AirportsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AirportsTable> {
+  $$AirportsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+}
+
+class $$AirportsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AirportsTable,
+          Airport,
+          $$AirportsTableFilterComposer,
+          $$AirportsTableOrderingComposer,
+          $$AirportsTableAnnotationComposer,
+          $$AirportsTableCreateCompanionBuilder,
+          $$AirportsTableUpdateCompanionBuilder,
+          (Airport, BaseReferences<_$AppDatabase, $AirportsTable, Airport>),
+          Airport,
+          PrefetchHooks Function()
+        > {
+  $$AirportsTableTableManager(_$AppDatabase db, $AirportsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$AirportsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$AirportsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$AirportsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> code = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AirportsCompanion(code: code, name: name, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String code,
+                required String name,
+                Value<int> rowid = const Value.absent(),
+              }) => AirportsCompanion.insert(
+                code: code,
+                name: name,
+                rowid: rowid,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          BaseReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AirportsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AirportsTable,
+      Airport,
+      $$AirportsTableFilterComposer,
+      $$AirportsTableOrderingComposer,
+      $$AirportsTableAnnotationComposer,
+      $$AirportsTableCreateCompanionBuilder,
+      $$AirportsTableUpdateCompanionBuilder,
+      (Airport, BaseReferences<_$AppDatabase, $AirportsTable, Airport>),
+      Airport,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3393,4 +3973,6 @@ class $AppDatabaseManager {
       $$ChefMessagesTableTableManager(_db, _db.chefMessages);
   $$NotificationsTableTableManager get notifications =>
       $$NotificationsTableTableManager(_db, _db.notifications);
+  $$AirportsTableTableManager get airports =>
+      $$AirportsTableTableManager(_db, _db.airports);
 }

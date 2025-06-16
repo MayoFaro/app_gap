@@ -5,7 +5,7 @@
     "passwordHash": "1234",
     "role": "pilote",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "066125174",
     "email": "olivierandrea@protonmail.com",
     "isAdmin": false
@@ -16,7 +16,7 @@
     "passwordHash": "1234",
     "role": "pilote",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "060310645",
     "email": "eric.barbarat@gmail.com",
     "isAdmin": false
@@ -27,29 +27,19 @@
     "passwordHash": "1234",
     "role": "pilote",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "077458582",
     "email": "jp.bolliet@yahoo.fr",
     "isAdmin": false
   },
-  {
-    "fullName": "dsf",
-    "trigramme": "BRG",
-    "passwordHash": "1234",
-    "role": "pilote",
-    "fonction": "rien",
-    "group": "hélico",
-    "phone": "066009258",
-    "email": "1671az@gmail.com",
-    "isAdmin": false
-  },
+
   {
     "fullName": "fdsfsd",
     "trigramme": "CTN",
     "passwordHash": "1234",
     "role": "pilote",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "074814497",
     "email": "l.charanton@laposte.net",
     "isAdmin": false
@@ -60,7 +50,7 @@
     "passwordHash": "1234",
     "role": "pilote",
     "fonction": "chef",
-    "group": "hélico",
+    "group": "helico",
     "phone": "066907175",
     "email": "didier.zwang@gmpa.com",
     "isAdmin": false
@@ -82,7 +72,7 @@
     "passwordHash": "1234",
     "role": "pilote",
     "fonction": "chef",
-    "group": "avion",
+    "group": "helico",
     "phone": "077632241",
     "email": "groodep@yahoo.fr",
     "isAdmin": true
@@ -170,7 +160,7 @@
     "passwordHash": "1234",
     "role": "mecano",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "062779949",
     "email": " alainpennacchi1966@gmail.com",
     "isAdmin": false
@@ -181,7 +171,7 @@
     "passwordHash": "1234",
     "role": "mecano",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "065607381",
     "email": "pestou973@gmail.com",
     "isAdmin": false
@@ -192,7 +182,7 @@
     "passwordHash": "1234",
     "role": "mecano",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "0625318378",
     "email": "xavierparegap70@gmail.com",
     "isAdmin": false
@@ -203,7 +193,7 @@
     "passwordHash": "1234",
     "role": "mecano",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "062726554",
     "email": "vil1bundy@gmail.com",
     "isAdmin": false
@@ -225,7 +215,7 @@
     "passwordHash": "1234",
     "role": "mecano",
     "fonction": "rien",
-    "group": "hélico",
+    "group": "helico",
     "phone": "076539444",
     "email": "mateuscaf974@gmail.com",
     "isAdmin": false
@@ -235,10 +225,10 @@
     "trigramme": "ABC",
     "passwordHash": "1234",
     "role": "pilote",
-    "fonction": "rien",
-    "group": "avion",
+    "fonction": "chef",
+    "group": "helico",
     "phone": "077632241",
-    "email": "grodep974@gmail.com",
+    "email": "gr@g.com",
     "isAdmin": true
   }
 ]

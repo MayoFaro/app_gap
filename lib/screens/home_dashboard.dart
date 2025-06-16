@@ -1,12 +1,12 @@
-// lib/screens/home_dashboard.dart
 import 'package:flutter/material.dart';
 import '../data/app_database.dart';
 import '../data/mission_dao.dart';
 import '../data/chef_message_dao.dart';
 
+/// Écran d'accueil avec prochaines missions et derniers messages du chef
 class HomeDashboard extends StatefulWidget {
   final AppDatabase db;
-  const HomeDashboard({super.key, required this.db});
+  const HomeDashboard({Key? key, required this.db}) : super(key: key);
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -16,8 +16,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
   late final MissionDao _missionDao;
   late final ChefMessageDao _chefDao;
 
-  Future<List<Mission>>? _nextMissions;
-  Future<ChefMessage?>? _latestMessage;
+  late Future<List<Mission>> _nextMissions;
+  late Future<ChefMessage?> _latestMessage;
 
   @override
   void initState() {
@@ -27,92 +27,86 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _loadData();
   }
 
+  /// Recharge les prochaines missions et le dernier message
   void _loadData() {
+    final now = DateTime.now();
     _nextMissions = _missionDao.getAllMissions().then((all) {
-      final now = DateTime.now();
-      final futureList = all
+      final upcoming = all
           .where((m) => m.date.isAfter(now) || m.date.isAtSameMomentAs(now))
-          .toList();
-      futureList.sort((a, b) {
-        final cmpDate = a.date.compareTo(b.date);
-        if (cmpDate != 0) return cmpDate;
-        return a.hourStart.compareTo(b.hourStart);
-      });
-      // On prend désormais les 5 premiers vols (tous vecteurs confondus)
-      return futureList.take(5).toList();
+          .toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+      return upcoming.take(5).toList();
     });
 
-    _latestMessage = _chefDao
-        .getAllMessages()
-        .then((list) => list.isNotEmpty ? list.first : null);
+    _latestMessage = _chefDao.getAllMessages().then((list) {
+      if (list.isEmpty) return null;
+      // Messages triés par timestamp décroissant dans DAO
+      return list.first;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Message du Chef
-          FutureBuilder<ChefMessage?>(
-            future: _latestMessage,
-            builder: (ctx, snap) {
-              if (snap.connectionState != ConnectionState.done) {
-                return const SizedBox(
-                    height: 80, child: Center(child: CircularProgressIndicator()));
-              }
-              final msg = snap.data;
-              if (msg == null) return const SizedBox();
-              return Card(
-                color: Colors.blue.shade50,
-                margin: const EdgeInsets.only(bottom: 16),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Message du Chef', style: textTheme.titleLarge),
-                      const SizedBox(height: 8),
-                      Text(msg.content ?? '', style: textTheme.bodyMedium),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${msg.authorRole.toUpperCase()} • ${msg.group.toUpperCase()}',
-                        style: textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          // Prochains vols
-          Text('Prochains vols', style: textTheme.titleLarge),
-          const SizedBox(height: 8),
-          FutureBuilder<List<Mission>>(
-            future: _nextMissions,
-            builder: (ctx, snap) {
-              if (snap.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final list = snap.data ?? [];
-              if (list.isEmpty) return const Text('Pas d’activité prévue');
-              return Column(
-                children: list.map((m) {
-                  final date = m.date.toLocal().toIso8601String().split('T').first;
-                  return ListTile(
-                    leading: const Icon(Icons.flight_takeoff),
-                    title: Text('$date — ${m.vecteur}'),
-                    subtitle: Text(
-                      '${m.pilote1}${m.pilote2 != null ? '/${m.pilote2}' : ''} → ${m.destinationCode}',
+    return RefreshIndicator(
+      onRefresh: () async {
+        _loadData();
+        setState(() {});
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Prochaines missions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              FutureBuilder<List<Mission>>(
+                future: _nextMissions,
+                builder: (context, snap) {
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final missions = snap.data!;
+                  if (missions.isEmpty) {
+                    return const Text('Aucune mission prochaine');
+                  }
+                  return Column(
+                    children: missions.map((m) {
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.flight),
+                        title: Text('${m.date.toLocal()}'.split('.').first),
+                        subtitle: Text('${m.vecteur} → ${m.destinationCode}'),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              const Divider(height: 32),
+              const Text('Message du Chef', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              FutureBuilder<ChefMessage?>(
+                future: _latestMessage,
+                builder: (context, snap) {
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final msg = snap.data;
+                  if (msg == null) {
+                    return const Text('Aucun message');
+                  }
+                  return Card(
+                    child: ListTile(
+                      title: Text(msg.content ?? ''),
+                      subtitle: Text('${msg.timestamp.toLocal()}'.split('.').first),
                     ),
                   );
-                }).toList(),
-              );
-            },
+                },
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

@@ -21,14 +21,19 @@ Future<void> main() async {
   final raw = await rootBundle.loadString('assets/users.json');
   final List<dynamic> jsonList = json.decode(raw);
 
+  // Récupérer les emails du JSON
+  final jsonEmails = jsonList.map((u) => u['email'] as String).toSet();
+
   // Comptage actuel dans la BDD
   final existing = await db.select(db.users).get();
-  debugPrint('DEBUG main: DB user count = ${existing.length}');
-  debugPrint('DEBUG main: JSON user count = ${jsonList.length}');
+  final existingEmails = existing.map((u) => u.email ?? '').toSet();
 
-  // Synchronisation conditionnelle si BDD incomplète
-  if (existing.length < jsonList.length) {
-    debugPrint('INFO main: synchronisation JSON -> BDD');
+  debugPrint('DEBUG main: JSON emails = $jsonEmails');
+  debugPrint('DEBUG main: DB   emails = $existingEmails');
+
+  // Synchronisation si différence entre JSON et BDD
+  if (existingEmails != jsonEmails) {
+    debugPrint('INFO main: divergence détectée, synchronisation JSON -> BDD');
     // Vider la table users
     await db.delete(db.users).go();
     // Réinsérer tous les utilisateurs du JSON
@@ -37,7 +42,7 @@ Future<void> main() async {
         UsersCompanion.insert(
           trigramme:    u['trigramme'] as String,
           passwordHash: u['passwordHash'] as String,
-          fonction:     u['fonction'] as String,   // Nouvelle colonne 'fonction'
+          fonction:     u['fonction'] as String,
           role:         u['role'] as String,
           group:        u['group'] as String,
           fullName:     Value(u['fullName'] as String),
@@ -48,7 +53,7 @@ Future<void> main() async {
       );
     }
   } else {
-    debugPrint('INFO main: BDD déjà synchronisée');
+    debugPrint('INFO main: pas de changement détecté, pas de resynchronisation');
   }
 
   // Lancement de l'application avec la BDD prête
@@ -82,7 +87,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    print('▶ AuthGate.initState(): currentUser = ${fbAuth.FirebaseAuth.instance.currentUser}');
+    debugPrint('▶ AuthGate.initState(): currentUser = \${fbAuth.FirebaseAuth.instance.currentUser}');
   }
 
   @override
@@ -95,7 +100,7 @@ class _AuthGateState extends State<AuthGate> {
         }
         final firebaseUser = snapshot.data;
         if (firebaseUser == null) {
-          return const AuthScreen();
+          return AuthScreen(db: widget.db);
         }
         return FutureBuilder<SharedPreferences>(
           future: SharedPreferences.getInstance(),

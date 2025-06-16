@@ -1,4 +1,3 @@
-// lib/screens/home_screen.dart
 import 'package:flutter/material.dart' hide Notification;
 import 'package:drift/drift.dart' show Value;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,12 +10,12 @@ import '../data/notification_dao.dart';
 
 import 'home_dashboard.dart';
 import 'missions_list.dart';
+import 'missions_helico_list.dart';
 import 'vol_en_cours_list.dart';
 import 'planning_list.dart';
 import 'tours_de_garde_screen.dart';
 import 'organigramme_list.dart';
 import 'tripfuel_screen.dart';
-import 'meteo_screen.dart';
 import 'notifications_screen.dart';
 import 'chef_messages_list.dart';
 import 'auth_screen.dart';
@@ -25,8 +24,7 @@ class HomeScreen extends StatefulWidget {
   final AppDatabase db;
   final bool isAdmin;
 
-  const HomeScreen({Key? key, required this.db, this.isAdmin = false})
-      : super(key: key);
+  const HomeScreen({Key? key, required this.db, this.isAdmin = false}) : super(key: key);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -58,47 +56,43 @@ class _HomeScreenState extends State<HomeScreen> {
     _chefDao = ChefMessageDao(widget.db);
     _notificationDao = NotificationDao(widget.db);
 
+    _loadTrigramme().then((_) {
+      setState(() {
+        _pages = _buildPages();
+      });
+    });
     _pages = _buildPages();
-    _loadTrigramme();
   }
 
   Future<void> _loadTrigramme() async {
     final prefs = await SharedPreferences.getInstance();
-    // DEBUG: lister toutes les clés
-    print('DEBUG prefs keys = ${prefs.getKeys()}');
-    String? trig = prefs.getString('userTrigram');
-    print('DEBUG prefs[userTrigram] = $trig');
-    if ((trig == null || trig.isEmpty) && prefs.containsKey('userTrigramme')) {
-      trig = prefs.getString('userTrigramme');
-      print('DEBUG prefs[userTrigramme] = $trig');
-    }
-
-    if (trig != null && trig.isNotEmpty) {
+    final trig = prefs.getString('userTrigram') ?? prefs.getString('userTrigramme') ?? '';
+    if (trig.isNotEmpty) {
       try {
-        // On force `trig!` car on sait qu'il n'est pas null ici
         final user = await (widget.db.select(widget.db.users)
-          ..where((u) => u.trigramme.equals(trig!)))
+          ..where((u) => u.trigramme.equals(trig)))
             .getSingle();
-        print('DEBUG DB user.group = ${user.group}');
-        setState(() {
-          _userTrigram = trig!;
-          _userGroup = user.group;
-          _pages = _buildPages();
-        });
-      } catch (e) {
-        print('ERROR: trigram "$trig" introuvable en base → $e');
+        _userTrigram = trig;
+        _userGroup = user.group.toLowerCase();
+      } catch (_) {
+        // ignore
       }
-    } else {
-      print('DEBUG: aucun trigramme trouvé dans SharedPreferences');
     }
   }
 
   List<Widget> _buildPages() {
+    // Écran mission selon le groupe
+    final missionPage = (_userGroup == 'helico')
+        ? MissionsHelicoList(dao: _missionDao)
+        : MissionsList(dao: _missionDao);
+
     return [
       HomeDashboard(db: widget.db),
-      MissionsList(dao: _missionDao),
+      missionPage,
       VolEnCoursList(
-          dao: _missionDao, group: _userGroup.isNotEmpty ? _userGroup : 'avion'),
+        dao: _missionDao,
+        group: _userGroup.isNotEmpty ? _userGroup : 'avion',
+      ),
       TripFuelScreen(db: widget.db),
     ];
   }
@@ -116,13 +110,17 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text(title),
         leading: Builder(
-          builder: (ctx) =>
-              IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer()),
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
         ),
         actions: [
           Builder(
-            builder: (ctx) =>
-                IconButton(icon: const Icon(Icons.settings), onPressed: () => Scaffold.of(ctx).openEndDrawer()),
+            builder: (ctx) => IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => Scaffold.of(ctx).openEndDrawer(),
+            ),
           ),
         ],
       ),
@@ -131,7 +129,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(padding: EdgeInsets.zero, children: [
           DrawerHeader(
             decoration: const BoxDecoration(color: Colors.blue),
-            child: Text('${_userTrigram}_appGAP', style: const TextStyle(color: Colors.white, fontSize: 24)),
+            child: Text('${_userTrigram}_appGAP',
+                style: const TextStyle(color: Colors.white, fontSize: 24)),
           ),
           ListTile(
             leading: const Icon(Icons.home),
@@ -158,10 +157,11 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Text('Se déconnecter'),
             onTap: () async {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('userTrigram');
-              await prefs.remove('userTrigramme');
+              await prefs.clear();
               Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const AuthScreen()), (_) => false);
+                MaterialPageRoute(builder: (_) => AuthScreen(db: widget.db)),
+                    (route) => false,
+              );
             },
           ),
         ]),
@@ -170,14 +170,17 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(padding: EdgeInsets.zero, children: [
           DrawerHeader(
             decoration: const BoxDecoration(color: Colors.blue),
-            child: const Text('Administratif', style: TextStyle(color: Colors.white, fontSize: 24)),
+            child: const Text('Administratif',
+                style: TextStyle(color: Colors.white, fontSize: 24)),
           ),
           ListTile(
             leading: const Icon(Icons.calendar_month),
             title: const Text('Planning annuel'),
             onTap: () {
               Navigator.of(context).pop();
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlanningList(dao: _planningDao))); //<=The named parameter 'trigram' is required, but there's no corresponding argument.
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => PlanningList(dao: _planningDao),
+              ));
             },
           ),
           ListTile(
@@ -185,8 +188,12 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Text('Tours de garde'),
             onTap: () {
               Navigator.of(context).pop();
-              Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => ToursDeGardeScreen(db: widget.db, isAdmin: widget.isAdmin)));
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ToursDeGardeScreen(
+                  db: widget.db,
+                  isAdmin: widget.isAdmin,
+                ),
+              ));
             },
           ),
           ListTile(
@@ -194,8 +201,9 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Text('Organigramme'),
             onTap: () {
               Navigator.of(context).pop();
-              Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => OrganigrammeList(db: widget.db)));
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => OrganigrammeList(db: widget.db),
+              ));
             },
           ),
           ListTile(
@@ -203,7 +211,9 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Text('Messages du Chef'),
             onTap: () {
               Navigator.of(context).pop();
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChefMessagesList(dao: _chefDao)));
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ChefMessagesList(dao: _chefDao),
+              ));
             },
           ),
           ListTile(
@@ -212,7 +222,11 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () {
               Navigator.of(context).pop();
               Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => NotificationsScreen(dao: _notificationDao, group: _userGroup)));
+                builder: (_) => NotificationsScreen(
+                  dao: _notificationDao,
+                  group: _userGroup,
+                ),
+              ));
             },
           ),
         ]),

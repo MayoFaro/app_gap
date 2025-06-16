@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:drift/drift.dart' hide Column;
 import '../data/app_database.dart';       // Pour ChefMessagesCompanion
 import '../data/chef_message_dao.dart';   // Pour interaction avec la DAO
 
@@ -28,7 +29,7 @@ class _NewChefMessageScreenState extends State<NewChefMessageScreen> {
       content: _contentController.text.trim(),
       authorRole: _authorRole,
       group: _group,
-      timestamp: DateTime.now(),
+      timestamp: Value(DateTime.now()),
     );
 
     await widget.dao.insertMessage(entry);

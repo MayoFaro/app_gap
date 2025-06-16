@@ -39,7 +39,7 @@ class _VolEnCoursListState extends State<VolEnCoursList> {
   Future<void> _markDeparture(Mission m) async {
     await (widget.dao.update(widget.dao.missions)
       ..where((tbl) => tbl.id.equals(m.id)))
-        .write(MissionsCompanion(actualDeparture: Value(DateTime.now())));
+        .write(MissionsCompanion(actualDeparture: Value(DateTime.now()))); //The named parameter 'actualDeparture' isn't defined.
     _loadMissions();
     setState(() {});
   }
@@ -47,7 +47,7 @@ class _VolEnCoursListState extends State<VolEnCoursList> {
   Future<void> _markArrival(Mission m) async {
     await (widget.dao.update(widget.dao.missions)
       ..where((tbl) => tbl.id.equals(m.id)))
-        .write(MissionsCompanion(actualArrival: Value(DateTime.now())));
+        .write(MissionsCompanion(actualArrival: Value(DateTime.now()))); //The named parameter 'actualArrival' isn't defined.
     _loadMissions();
     setState(() {});
   }
