@@ -7,27 +7,25 @@ part of 'mission_model.dart';
 // **************************************************************************
 
 MissionModel _$MissionModelFromJson(Map<String, dynamic> json) => MissionModel(
-  id: (json['id'] as num?)?.toInt(),
-  date: DateTime.parse(json['date'] as String),
-  hourStart: json['hourStart'] as String,
-  hourEnd: json['hourEnd'] as String,
-  vecteur: json['vecteur'] as String,
-  destinationCode: json['destinationCode'] as String,
-  description: json['description'] as String?,
-  createdBy: json['createdBy'] as String,
-  pilote1: json['pilote1'] as String,
-  pilote2: json['pilote2'] as String?,
-  mec1: json['mec1'] as String?,
-  mec2: json['mec2'] as String?,
-  actualDeparture:
-      json['actualDeparture'] == null
+      id: (json['id'] as num?)?.toInt(),
+      date: DateTime.parse(json['date'] as String),
+      hourStart: json['hourStart'] as String,
+      hourEnd: json['hourEnd'] as String,
+      vecteur: json['vecteur'] as String,
+      destinationCode: json['destinationCode'] as String,
+      description: json['description'] as String?,
+      createdBy: json['createdBy'] as String,
+      pilote1: json['pilote1'] as String,
+      pilote2: json['pilote2'] as String?,
+      mec1: json['mec1'] as String?,
+      mec2: json['mec2'] as String?,
+      actualDeparture: json['actualDeparture'] == null
           ? null
           : DateTime.parse(json['actualDeparture'] as String),
-  actualArrival:
-      json['actualArrival'] == null
+      actualArrival: json['actualArrival'] == null
           ? null
           : DateTime.parse(json['actualArrival'] as String),
-);
+    );
 
 Map<String, dynamic> _$MissionModelToJson(MissionModel instance) =>
     <String, dynamic>{
