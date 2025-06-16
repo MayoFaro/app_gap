@@ -45,6 +45,7 @@ dependencies:
   firebase_core: ^3.13.1
   firebase_auth: ^5.5.4
   horizontal_data_table: ^4.3.1
+  font_awesome_flutter: ^10.4.0
 
 dev_dependencies:
   flutter_test:
