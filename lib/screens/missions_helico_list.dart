@@ -1,18 +1,13 @@
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
+import 'package:drift/drift.dart' show Value;
+
 import '../data/app_database.dart';
 import '../data/mission_dao.dart';
 
-/// Data holder for missions and chef status
-class _MissionsData {
-  final List<Mission> missions;
-  final bool isChef;
-  _MissionsData({required this.missions, required this.isChef});
-}
-
-/// Screen for weekly helicopter missions
+/// Écran des missions hebdo pour le groupe hélico
 class MissionsHelicoList extends StatefulWidget {
   final MissionDao dao;
   const MissionsHelicoList({Key? key, required this.dao}) : super(key: key);
@@ -22,233 +17,275 @@ class MissionsHelicoList extends StatefulWidget {
 }
 
 class _MissionsHelicoListState extends State<MissionsHelicoList> {
-  late Future<_MissionsData> _dataFuture;
+  late List<String> _pilots;      // Trigrammes 'pilote' + 'helico'
+  late List<String> _crew;        // Trigrammes ('pilote'|'mecano') + helico
+  late Future<List<Mission>> _missionsFuture;
+  bool _isChef = false;
+  bool _isReady = false;
+
+  static const List<String> _vectors = ['AH175', 'EC225'];
 
   @override
   void initState() {
     super.initState();
-    _dataFuture = _loadData();
+    _initialize();
   }
 
-  Future<_MissionsData> _loadData() async {
+  Future<void> _initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final fonction = prefs.getString('fonction')?.toLowerCase();
-    final all = await widget.dao.getAllMissions();
-    final isChef = fonction == 'chef';
+    _isChef = fonction == 'chef';
+    debugPrint('DEBUG MissionsHelicoList._initialize: fonction=$fonction, isChef=$_isChef');
 
-    // Only helico vecteurs
-    const vecteurs = ['AH175', 'EC225'];
-    final filtered = all
-        .where((m) => vecteurs.contains(m.vecteur))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
-
-    return _MissionsData(missions: filtered, isChef: isChef);
-  }
-
-  Future<void> _showAddHelicoDialog({Mission? mission}) async {
-    // Prepare initial values
-    final today = DateTime.now();
-    DateTime chosenDate = mission?.date ?? today;
-    TimeOfDay chosenTime = mission != null
-        ? TimeOfDay(hour: mission.date.hour, minute: mission.date.minute)
-        : const TimeOfDay(hour: 8, minute: 30);
-    String chosenDest = mission?.destinationCode ?? 'FOGK';
-
-    // Fetch pilots with fonction 'pilote' and group 'helico'
     final users = await widget.dao.attachedDatabase.select(widget.dao.attachedDatabase.users).get();
-    final pilots = users
+    _pilots = users
         .where((u) => u.fonction.toLowerCase() == 'pilote' && u.group.toLowerCase() == 'helico')
         .map((u) => u.trigramme)
         .toList();
+    _crew = users
+        .where((u) {
+      final fn = u.fonction.toLowerCase();
+      return (fn == 'pilote' || fn == 'mecano') && u.group.toLowerCase() == 'helico';
+    })
+        .map((u) => u.trigramme)
+        .toList();
 
-    String pil1 = mission?.pilote1 ?? (pilots.isNotEmpty ? pilots.first : '');
-    String pil2 = mission?.pilote2 ?? (pilots.length > 1 ? pilots[1] : pil1);
-    String pil3 = mission?.pilote3 ?? (pilots.length > 2 ? pilots[2] : pil1); //The getter 'pilote3' isn't defined for the type 'Mission'.
+    _loadMissions();
+    setState(() => _isReady = true);
+  }
 
-    // Show dialog
-    showDialog(
+  void _loadMissions() {
+    _missionsFuture = widget.dao.getAllMissions().then((all) {
+      final filtered = all.where((m) => _vectors.contains(m.vecteur)).toList();
+      filtered.sort((a, b) => a.date.compareTo(b.date));
+      debugPrint('DEBUG MissionsHelicoList._loadMissions: found ${filtered.length} helico missions');
+      return filtered;
+    });
+  }
+
+  Future<void> _showMissionDialog([Mission? mission]) async {
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final minDate = DateTime(now.year, now.month, now.day);
+
+    // Initial values
+    DateTime chosenDate = mission?.date ?? minDate;
+    if (chosenDate.isBefore(minDate)) chosenDate = minDate;
+    String chosenVector = mission?.vecteur ?? _vectors.first;
+    String chosenDest = mission?.destinationCode ?? 'FOGK';
+    String chosenTime = mission != null
+        ? DateFormat('HH:mm').format(mission.date)
+        : '08:30';
+    String chosenP1 = mission?.pilote1 ?? (_pilots.isNotEmpty ? _pilots.first : '');
+    String chosenP2 = mission?.pilote2 ?? (_crew.length > 1 ? _crew[1] : chosenP1);
+    String chosenP3 = _crew.length > 2 ? _crew[2] : chosenP1;
+    final remarkCtrl = TextEditingController(text: mission?.description ?? '');
+
+    final times = List.generate(48, (i) {
+      final h = i ~/ 2;
+      final m = (i % 2) * 30;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    });
+
+    await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx2, setStateInner) {
           return AlertDialog(
-            title: Text(mission == null ? 'Ajouter mission Hélico' : 'Modifier mission Hélico'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column( //'Column' isn't a function.
-                mainAxisSize: MainAxisSize.min,
+            title: Text(mission == null ? 'Ajouter mission Héli' : 'Modifier mission Héli'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Date selector
+                  const Text('Appareil'),
+                  SizedBox(
+                    height: 50,
+                    child: Row(
+                      children: _vectors.map((v) {
+                        final sel = v == chosenVector;
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => setStateInner(() => chosenVector = v),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              decoration: BoxDecoration(
+                                color: sel ? Colors.blue : Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Center(
+                                child: Text(v, style: TextStyle(color: sel ? Colors.white : Colors.black)),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       IconButton(
                         icon: const Icon(Icons.chevron_left),
-                        onPressed: () {
-                          final prev = chosenDate.subtract(const Duration(days: 1));
-                          if (!prev.isBefore(today)) setStateInner(() => chosenDate = prev);
-                        },
+                        onPressed: chosenDate.isAfter(minDate)
+                            ? () => setStateInner(() => chosenDate = chosenDate.subtract(const Duration(days: 1)))
+                            : null,
                       ),
-                      Text('${chosenDate.day.toString().padLeft(2, '0')}/'
-                          '${chosenDate.month.toString().padLeft(2, '0')}'),
+                      Text(DateFormat('dd/MM/yyyy').format(chosenDate)),
                       IconButton(
                         icon: const Icon(Icons.chevron_right),
-                        onPressed: () => setStateInner(
-                              () => chosenDate = chosenDate.add(const Duration(days: 1)),
-                        ),
+                        onPressed: () => setStateInner(() => chosenDate = chosenDate.add(const Duration(days: 1))),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Time picker compact
+                  const Text('Destination'),
                   SizedBox(
-                    height: 100,
-                    child: CupertinoDatePicker(
-                      mode: CupertinoDatePickerMode.time,
-                      initialDateTime: DateTime(
-                        chosenDate.year,
-                        chosenDate.month,
-                        chosenDate.day,
-                        chosenTime.hour,
-                        chosenTime.minute,
-                      ),
-                      use24hFormat: true,
-                      minuteInterval: 30,
-                      onDateTimeChanged: (dt) => setStateInner(() {
-                        chosenTime = TimeOfDay(hour: dt.hour, minute: dt.minute);
-                      }),
+                    height: 80,
+                    child: CupertinoPicker(
+                      looping: true,
+                      itemExtent: 32,
+                      scrollController: FixedExtentScrollController(initialItem: 0),
+                      onSelectedItemChanged: (i) => setStateInner(() => chosenDest = ['FOGK','FOGR','FOOL','FOON','FOOG','FOGO'][i]),
+                      children: ['FOGK','FOGR','FOOL','FOON','FOOG','FOGO'].map((d) => Center(child: Text(d))).toList(),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // Pilots pickers, compact rows
-                  _buildLabelledDropdown('Pil1', pilots, pil1, (v) => setStateInner(() => pil1 = v)),
-                  _buildLabelledDropdown('Pil2', pilots, pil2, (v) => setStateInner(() => pil2 = v)),
-                  _buildLabelledDropdown('Pil3', pilots, pil3, (v) => setStateInner(() => pil3 = v)),
-                  const SizedBox(height: 8),
-                  // Destination dropdown
-                  _buildLabelledDropdown(
-                    'Dest', ['FOGK', 'FOGR', 'FOOL', 'FOON', 'FOOG', 'FOGO'],
-                    chosenDest,
-                        (v) => setStateInner(() => chosenDest = v),
+                  const Text('Heure'),
+                  SizedBox(
+                    height: 80,
+                    child: CupertinoPicker(
+                      looping: true,
+                      itemExtent: 32,
+                      scrollController: FixedExtentScrollController(initialItem: times.indexOf(chosenTime)),
+                      onSelectedItemChanged: (i) => setStateInner(() => chosenTime = times[i]),
+                      children: times.map((t) => Center(child: Text(t))).toList(),
+                    ),
                   ),
+                  const SizedBox(height: 8),
+                  for (var idx = 1; idx <= 3; idx++) ...[
+                    Text('Pilote ${idx}'),
+                    SizedBox(
+                      height: 80,
+                      child: CupertinoPicker(
+                        looping: true,
+                        itemExtent: 32,
+                        scrollController: FixedExtentScrollController(initialItem: idx == 1
+                            ? _pilots.indexOf(chosenP1)
+                            : (idx == 2 ? _crew.indexOf(chosenP2) : _crew.indexOf(chosenP3))),
+                        onSelectedItemChanged: (i) => setStateInner(() {
+                          if (idx == 1) chosenP1 = _pilots[i];
+                          else if (idx == 2) chosenP2 = _crew[i];
+                          else chosenP3 = _crew[i];
+                        }),
+                        children: (idx == 1 ? _pilots : _crew).map((p) => Center(child: Text(p))).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  const Text('Remarque'),
+                  TextField(controller: remarkCtrl),
                 ],
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Annuler'),
-              ),
+              if (mission != null)
+                TextButton(
+                  onPressed: () async {
+                    await widget.dao.deleteMission(mission.id);
+                    Navigator.of(ctx2).pop();
+                  },
+                  child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
+                ),
+              TextButton(onPressed: () => Navigator.of(ctx2).pop(), child: const Text('Annuler')),
               ElevatedButton(
                 onPressed: () async {
+                  final parts = chosenTime.split(':');
                   final dt = DateTime(
                     chosenDate.year,
                     chosenDate.month,
                     chosenDate.day,
-                    chosenTime.hour,
-                    chosenTime.minute,
-                  );
-                  final entry = MissionsCompanion.insert(
-                    date: dt,
-                    vecteur: mission?.vecteur ?? 'AH175',
-                    pilote1: pil1,
-                    pilote2: Value(pil2),
-                    pilote3: Value(pil3), //The named parameter 'pilote3' isn't defined.
-                    destinationCode: chosenDest,
-                    description: const Value.absent(),
+                    int.parse(parts[0]),
+                    int.parse(parts[1]),
                   );
                   if (mission == null) {
-                    await widget.dao.insertMission(entry);
+                    await widget.dao.insertMission(MissionsCompanion.insert(
+                      date: dt,
+                      vecteur: chosenVector,
+                      pilote1: chosenP1,
+                      pilote2: Value(chosenP2),
+                      destinationCode: chosenDest,
+                      description: Value(remarkCtrl.text.trim()),
+                    ));
                   } else {
-                    await widget.dao.updateMission(
-                      mission.copyWith(
-                        date: dt,
-                        pilote1: pil1,
-                        pilote2: Value(pil2),
-                        pilote3: Value(pil3), //The named parameter 'pilote3' isn't defined.
-                        destinationCode: chosenDest,
-                      ),
-                    );
+                    await widget.dao.updateMission(mission.copyWith(
+                      date: dt,
+                      vecteur: chosenVector,
+                      pilote1: chosenP1,
+                      pilote2: Value(chosenP2),
+                      destinationCode: chosenDest,
+                      description: Value(remarkCtrl.text.trim()),
+                    ));
                   }
-                  Navigator.of(ctx).pop();
-                  setState(() => _dataFuture = _loadData());
+                  Navigator.of(ctx2).pop();
                 },
-                child: const Text('Valider'),
+                child: Text(mission == null ? 'Valider' : 'Modifier'),
               ),
             ],
           );
         },
       ),
     );
-  }
-
-  Widget _buildLabelledDropdown(
-      String label,
-      List<String> items,
-      String value,
-      ValueChanged<String> onChanged,
-      ) {
-    return Row(
-      children: [
-        SizedBox(width: 40, child: Text(label)),
-        Expanded(
-          child: DropdownButton<String>(
-            value: value,
-            isExpanded: true,
-            items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-            onChanged: (v) => onChanged(v!),
-            itemHeight: 32,
-          ),
-        ),
-      ],
-    );
+    _loadMissions();
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isReady) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Missions Hebdo Hélico')),
-      body: FutureBuilder<_MissionsData>(
-        future: _dataFuture,
-        builder: (ctx, snap) {
-          if (snap.connectionState != ConnectionState.done) {
+      body: FutureBuilder<List<Mission>>(
+        future: _missionsFuture,
+        builder: (ctx, msnap) {
+          if (msnap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          final data = snap.data!;
-          if (data.missions.isEmpty) {
-            return const Center(child: Text('Aucune mission'));  }
+          final list = msnap.data ?? [];
+          if (list.isEmpty) {
+            return const Center(child: Text('Aucune mission hélico'));
+          }
           return ListView.builder(
-            itemCount: data.missions.length,
+            itemCount: list.length,
             itemBuilder: (_, i) {
-              final m = data.missions[i];
-              return ListTile(
-                title: Text(
-                    '${m.date.day.toString().padLeft(2,'0')}/'
-                        '${m.date.month.toString().padLeft(2,'0')} '
-                        '${m.date.hour.toString().padLeft(2,'0')}:'
-                        '${m.date.minute.toString().padLeft(2,'0')}'
+              final m = list[i];
+              return GestureDetector(
+                onLongPress: _isChef ? () => _showMissionDialog(m) : null,
+                child: ListTile(
+                  title: Text(
+                    '${m.date.day.toString().padLeft(2, '0')}/${m.date.month.toString().padLeft(2, '0')} '  '${m.date.hour.toString().padLeft(2, '0')}:${m.date.minute.toString().padLeft(2, '0')}',
+                  ),
+                  subtitle: Text(
+                    '${m.pilote1}/${m.pilote2}/${m.pilote2}/${m.description ?? ''}',
+                  ),
                 ),
-                subtitle: Text('${m.pilote1}/${m.pilote2}/${m.pilote3} → ${m.destinationCode}'), //The getter 'pilote3' isn't defined for the type 'Mission'.
-                onTap: data.isChef
-                    ? () => _showAddHelicoDialog(mission: m)
-                    : null,
               );
             },
           );
         },
       ),
-      floatingActionButton: FutureBuilder<_MissionsData>(
-        future: _dataFuture,
-        builder: (ctx, snap) {
-          if (snap.connectionState != ConnectionState.done || !snap.data!.isChef) {
-            return const SizedBox.shrink();
-          }
-          return FloatingActionButton(
-            onPressed: () => _showAddHelicoDialog(),
-            child: const Icon(Icons.add),
-          );
+      floatingActionButton: _isChef
+          ? FloatingActionButton(
+        onPressed: () {
+          debugPrint('DEBUG MissionsHelicoList: + button pressed (isChef=$_isChef)');
+          _showMissionDialog();
         },
-      ),
+        child: const Icon(Icons.add),
+      )
+          : null,
     );
   }
 }
