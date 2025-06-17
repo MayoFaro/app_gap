@@ -14,7 +14,6 @@ part 'app_database.g.dart';
 /// Table des utilisateurs
 class Users extends Table {
   TextColumn get trigramme    => text().withLength(min: 3, max: 3)();
-  TextColumn get passwordHash => text().withLength(min: 4, max: 4)();
   TextColumn get fonction     => text().withLength(min: 3, max: 15)();
   TextColumn get role         => text().withLength(min: 3, max: 15)();
   TextColumn get group        => text().withLength(min: 4, max: 6)();

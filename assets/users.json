@@ -21,17 +21,7 @@
     "email": "eric.barbarat@gmail.com",
     "isAdmin": false
   },
-  {
-    "fullName": "fds",
-    "trigramme": "BLT",
-    "passwordHash": "1234",
-    "role": "pilote",
-    "fonction": "rien",
-    "group": "helico",
-    "phone": "077458582",
-    "email": "jp.bolliet@yahoo.fr",
-    "isAdmin": false
-  },
+
 
   {
     "fullName": "fdsfsd",
@@ -71,7 +61,7 @@
     "trigramme": "DPS",
     "passwordHash": "1234",
     "role": "pilote",
-    "fonction": "chef",
+    "fonction": "rien",
     "group": "avion",
     "phone": "077632241",
     "email": "groodep@yahoo.fr",

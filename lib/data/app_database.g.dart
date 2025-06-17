@@ -17,15 +17,6 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
           GeneratedColumn.checkTextLength(minTextLength: 3, maxTextLength: 3),
       type: DriftSqlType.string,
       requiredDuringInsert: true);
-  static const VerificationMeta _passwordHashMeta =
-      const VerificationMeta('passwordHash');
-  @override
-  late final GeneratedColumn<String> passwordHash = GeneratedColumn<String>(
-      'password_hash', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 4, maxTextLength: 4),
-      type: DriftSqlType.string,
-      requiredDuringInsert: true);
   static const VerificationMeta _fonctionMeta =
       const VerificationMeta('fonction');
   @override
@@ -78,17 +69,8 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
           GeneratedColumn.constraintIsAlways('CHECK ("is_admin" IN (0, 1))'),
       defaultValue: const Constant(false));
   @override
-  List<GeneratedColumn> get $columns => [
-        trigramme,
-        passwordHash,
-        fonction,
-        role,
-        group,
-        fullName,
-        phone,
-        email,
-        isAdmin
-      ];
+  List<GeneratedColumn> get $columns =>
+      [trigramme, fonction, role, group, fullName, phone, email, isAdmin];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -104,14 +86,6 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
           trigramme.isAcceptableOrUnknown(data['trigramme']!, _trigrammeMeta));
     } else if (isInserting) {
       context.missing(_trigrammeMeta);
-    }
-    if (data.containsKey('password_hash')) {
-      context.handle(
-          _passwordHashMeta,
-          passwordHash.isAcceptableOrUnknown(
-              data['password_hash']!, _passwordHashMeta));
-    } else if (isInserting) {
-      context.missing(_passwordHashMeta);
     }
     if (data.containsKey('fonction')) {
       context.handle(_fonctionMeta,
@@ -158,8 +132,6 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
     return User(
       trigramme: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}trigramme'])!,
-      passwordHash: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}password_hash'])!,
       fonction: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}fonction'])!,
       role: attachedDatabase.typeMapping
@@ -185,7 +157,6 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
 
 class User extends DataClass implements Insertable<User> {
   final String trigramme;
-  final String passwordHash;
   final String fonction;
   final String role;
   final String group;
@@ -195,7 +166,6 @@ class User extends DataClass implements Insertable<User> {
   final bool isAdmin;
   const User(
       {required this.trigramme,
-      required this.passwordHash,
       required this.fonction,
       required this.role,
       required this.group,
@@ -207,7 +177,6 @@ class User extends DataClass implements Insertable<User> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['trigramme'] = Variable<String>(trigramme);
-    map['password_hash'] = Variable<String>(passwordHash);
     map['fonction'] = Variable<String>(fonction);
     map['role'] = Variable<String>(role);
     map['group'] = Variable<String>(group);
@@ -227,7 +196,6 @@ class User extends DataClass implements Insertable<User> {
   UsersCompanion toCompanion(bool nullToAbsent) {
     return UsersCompanion(
       trigramme: Value(trigramme),
-      passwordHash: Value(passwordHash),
       fonction: Value(fonction),
       role: Value(role),
       group: Value(group),
@@ -247,7 +215,6 @@ class User extends DataClass implements Insertable<User> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return User(
       trigramme: serializer.fromJson<String>(json['trigramme']),
-      passwordHash: serializer.fromJson<String>(json['passwordHash']),
       fonction: serializer.fromJson<String>(json['fonction']),
       role: serializer.fromJson<String>(json['role']),
       group: serializer.fromJson<String>(json['group']),
@@ -262,7 +229,6 @@ class User extends DataClass implements Insertable<User> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'trigramme': serializer.toJson<String>(trigramme),
-      'passwordHash': serializer.toJson<String>(passwordHash),
       'fonction': serializer.toJson<String>(fonction),
       'role': serializer.toJson<String>(role),
       'group': serializer.toJson<String>(group),
@@ -275,7 +241,6 @@ class User extends DataClass implements Insertable<User> {
 
   User copyWith(
           {String? trigramme,
-          String? passwordHash,
           String? fonction,
           String? role,
           String? group,
@@ -285,7 +250,6 @@ class User extends DataClass implements Insertable<User> {
           bool? isAdmin}) =>
       User(
         trigramme: trigramme ?? this.trigramme,
-        passwordHash: passwordHash ?? this.passwordHash,
         fonction: fonction ?? this.fonction,
         role: role ?? this.role,
         group: group ?? this.group,
@@ -298,7 +262,6 @@ class User extends DataClass implements Insertable<User> {
   String toString() {
     return (StringBuffer('User(')
           ..write('trigramme: $trigramme, ')
-          ..write('passwordHash: $passwordHash, ')
           ..write('fonction: $fonction, ')
           ..write('role: $role, ')
           ..write('group: $group, ')
@@ -311,14 +274,13 @@ class User extends DataClass implements Insertable<User> {
   }
 
   @override
-  int get hashCode => Object.hash(trigramme, passwordHash, fonction, role,
-      group, fullName, phone, email, isAdmin);
+  int get hashCode => Object.hash(
+      trigramme, fonction, role, group, fullName, phone, email, isAdmin);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is User &&
           other.trigramme == this.trigramme &&
-          other.passwordHash == this.passwordHash &&
           other.fonction == this.fonction &&
           other.role == this.role &&
           other.group == this.group &&
@@ -330,7 +292,6 @@ class User extends DataClass implements Insertable<User> {
 
 class UsersCompanion extends UpdateCompanion<User> {
   final Value<String> trigramme;
-  final Value<String> passwordHash;
   final Value<String> fonction;
   final Value<String> role;
   final Value<String> group;
@@ -341,7 +302,6 @@ class UsersCompanion extends UpdateCompanion<User> {
   final Value<int> rowid;
   const UsersCompanion({
     this.trigramme = const Value.absent(),
-    this.passwordHash = const Value.absent(),
     this.fonction = const Value.absent(),
     this.role = const Value.absent(),
     this.group = const Value.absent(),
@@ -353,7 +313,6 @@ class UsersCompanion extends UpdateCompanion<User> {
   });
   UsersCompanion.insert({
     required String trigramme,
-    required String passwordHash,
     required String fonction,
     required String role,
     required String group,
@@ -363,13 +322,11 @@ class UsersCompanion extends UpdateCompanion<User> {
     this.isAdmin = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : trigramme = Value(trigramme),
-        passwordHash = Value(passwordHash),
         fonction = Value(fonction),
         role = Value(role),
         group = Value(group);
   static Insertable<User> custom({
     Expression<String>? trigramme,
-    Expression<String>? passwordHash,
     Expression<String>? fonction,
     Expression<String>? role,
     Expression<String>? group,
@@ -381,7 +338,6 @@ class UsersCompanion extends UpdateCompanion<User> {
   }) {
     return RawValuesInsertable({
       if (trigramme != null) 'trigramme': trigramme,
-      if (passwordHash != null) 'password_hash': passwordHash,
       if (fonction != null) 'fonction': fonction,
       if (role != null) 'role': role,
       if (group != null) 'group': group,
@@ -395,7 +351,6 @@ class UsersCompanion extends UpdateCompanion<User> {
 
   UsersCompanion copyWith(
       {Value<String>? trigramme,
-      Value<String>? passwordHash,
       Value<String>? fonction,
       Value<String>? role,
       Value<String>? group,
@@ -406,7 +361,6 @@ class UsersCompanion extends UpdateCompanion<User> {
       Value<int>? rowid}) {
     return UsersCompanion(
       trigramme: trigramme ?? this.trigramme,
-      passwordHash: passwordHash ?? this.passwordHash,
       fonction: fonction ?? this.fonction,
       role: role ?? this.role,
       group: group ?? this.group,
@@ -423,9 +377,6 @@ class UsersCompanion extends UpdateCompanion<User> {
     final map = <String, Expression>{};
     if (trigramme.present) {
       map['trigramme'] = Variable<String>(trigramme.value);
-    }
-    if (passwordHash.present) {
-      map['password_hash'] = Variable<String>(passwordHash.value);
     }
     if (fonction.present) {
       map['fonction'] = Variable<String>(fonction.value);
@@ -458,7 +409,6 @@ class UsersCompanion extends UpdateCompanion<User> {
   String toString() {
     return (StringBuffer('UsersCompanion(')
           ..write('trigramme: $trigramme, ')
-          ..write('passwordHash: $passwordHash, ')
           ..write('fonction: $fonction, ')
           ..write('role: $role, ')
           ..write('group: $group, ')

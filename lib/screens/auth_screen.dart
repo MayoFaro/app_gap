@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/app_database.dart';
+import '../data/user_service.dart'; // <-- service hybride Firestore + cache
 import 'register_screen.dart';
 import 'home_screen.dart';
 
@@ -29,36 +30,30 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
+      // Authentification Firebase
       final cred = await fbAuth.FirebaseAuth.instance
           .signInWithEmailAndPassword(email: emailInput, password: _passCtrl.text);
-      final user = cred.user;
-      if (user == null) throw Exception('Échec de l’authentification');
+      final firebaseUser = cred.user;
+      if (firebaseUser == null) throw Exception('Échec de l’authentification');
 
-      // Debug: list all users in local JSON-DB
-      final allUsers = await widget.db.select(widget.db.users).get();
-      debugPrint('DEBUG Auth: Users in DB emails=${allUsers.map((u) => u.email).toList()}');
+      // Récupération de l'utilisateur (Firestore + fallback cache)
+      final user = await UserService(db: widget.db).findUserByEmail(emailInput); //The static method 'findUserByEmail' can't be accessed through an instance.
+      if (user == null) throw Exception("Aucun utilisateur trouvé pour cet email");
 
-      // Query for matching profile
-      final row = await (widget.db.select(widget.db.users)
-        ..where((u) => u.email.equals(emailInput)))
-          .getSingleOrNull();
-      debugPrint('DEBUG Auth: Query result row=$row');
-      if (row == null) throw Exception('Aucun utilisateur trouvé pour cet email');
-
-      // Save prefs
+      // Sauvegarde dans les SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userTrigram', row.trigramme);
-      await prefs.setString('userGroup', row.group);
-      await prefs.setString('fonction', row.fonction);
-      await prefs.setString('role', row.role);
-      await prefs.setBool('isAdmin', row.isAdmin);
+      await prefs.setString('userTrigram', user.trigramme);//The getter 'trigramme' isn't defined for the type 'Map<String, dynamic>'.
+      await prefs.setString('userGroup', user.group);//The getter 'group' isn't defined for the type 'Map<String, dynamic>'.
+      await prefs.setString('fonction', user.fonction);//The getter 'fonction' isn't defined for the type 'Map<String, dynamic>'.
+      await prefs.setString('role', user.role);//The getter 'role' isn't defined for the type 'Map<String, dynamic>'.
+      await prefs.setBool('isAdmin', user.isAdmin);//The getter 'isAdmin' isn't defined for the type 'Map<String, dynamic>'.
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => HomeScreen(db: widget.db)),
       );
     } catch (e) {
-      debugPrint('DEBUG Auth: Error in login -> $e');
+      debugPrint('DEBUG Auth: Login failed: $e');
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
