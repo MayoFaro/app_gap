@@ -916,300 +916,6 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
   }
 }
 
-class $PlanningEventsTable extends PlanningEvents
-    with TableInfo<$PlanningEventsTable, PlanningEvent> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $PlanningEventsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-      'id', aliasedName, false,
-      hasAutoIncrement: true,
-      type: DriftSqlType.int,
-      requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
-  static const VerificationMeta _userMeta = const VerificationMeta('user');
-  @override
-  late final GeneratedColumn<String> user = GeneratedColumn<String>(
-      'user', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 3, maxTextLength: 3),
-      type: DriftSqlType.string,
-      requiredDuringInsert: true);
-  static const VerificationMeta _typeEventMeta =
-      const VerificationMeta('typeEvent');
-  @override
-  late final GeneratedColumn<String> typeEvent = GeneratedColumn<String>(
-      'type_event', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 2, maxTextLength: 4),
-      type: DriftSqlType.string,
-      requiredDuringInsert: true);
-  static const VerificationMeta _dateStartMeta =
-      const VerificationMeta('dateStart');
-  @override
-  late final GeneratedColumn<DateTime> dateStart = GeneratedColumn<DateTime>(
-      'date_start', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  static const VerificationMeta _dateEndMeta =
-      const VerificationMeta('dateEnd');
-  @override
-  late final GeneratedColumn<DateTime> dateEnd = GeneratedColumn<DateTime>(
-      'date_end', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  @override
-  List<GeneratedColumn> get $columns =>
-      [id, user, typeEvent, dateStart, dateEnd];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'planning_events';
-  @override
-  VerificationContext validateIntegrity(Insertable<PlanningEvent> instance,
-      {bool isInserting = false}) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('user')) {
-      context.handle(
-          _userMeta, user.isAcceptableOrUnknown(data['user']!, _userMeta));
-    } else if (isInserting) {
-      context.missing(_userMeta);
-    }
-    if (data.containsKey('type_event')) {
-      context.handle(_typeEventMeta,
-          typeEvent.isAcceptableOrUnknown(data['type_event']!, _typeEventMeta));
-    } else if (isInserting) {
-      context.missing(_typeEventMeta);
-    }
-    if (data.containsKey('date_start')) {
-      context.handle(_dateStartMeta,
-          dateStart.isAcceptableOrUnknown(data['date_start']!, _dateStartMeta));
-    } else if (isInserting) {
-      context.missing(_dateStartMeta);
-    }
-    if (data.containsKey('date_end')) {
-      context.handle(_dateEndMeta,
-          dateEnd.isAcceptableOrUnknown(data['date_end']!, _dateEndMeta));
-    } else if (isInserting) {
-      context.missing(_dateEndMeta);
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  PlanningEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return PlanningEvent(
-      id: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
-      user: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}user'])!,
-      typeEvent: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}type_event'])!,
-      dateStart: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}date_start'])!,
-      dateEnd: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}date_end'])!,
-    );
-  }
-
-  @override
-  $PlanningEventsTable createAlias(String alias) {
-    return $PlanningEventsTable(attachedDatabase, alias);
-  }
-}
-
-class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
-  final int id;
-  final String user;
-  final String typeEvent;
-  final DateTime dateStart;
-  final DateTime dateEnd;
-  const PlanningEvent(
-      {required this.id,
-      required this.user,
-      required this.typeEvent,
-      required this.dateStart,
-      required this.dateEnd});
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['user'] = Variable<String>(user);
-    map['type_event'] = Variable<String>(typeEvent);
-    map['date_start'] = Variable<DateTime>(dateStart);
-    map['date_end'] = Variable<DateTime>(dateEnd);
-    return map;
-  }
-
-  PlanningEventsCompanion toCompanion(bool nullToAbsent) {
-    return PlanningEventsCompanion(
-      id: Value(id),
-      user: Value(user),
-      typeEvent: Value(typeEvent),
-      dateStart: Value(dateStart),
-      dateEnd: Value(dateEnd),
-    );
-  }
-
-  factory PlanningEvent.fromJson(Map<String, dynamic> json,
-      {ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return PlanningEvent(
-      id: serializer.fromJson<int>(json['id']),
-      user: serializer.fromJson<String>(json['user']),
-      typeEvent: serializer.fromJson<String>(json['typeEvent']),
-      dateStart: serializer.fromJson<DateTime>(json['dateStart']),
-      dateEnd: serializer.fromJson<DateTime>(json['dateEnd']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'user': serializer.toJson<String>(user),
-      'typeEvent': serializer.toJson<String>(typeEvent),
-      'dateStart': serializer.toJson<DateTime>(dateStart),
-      'dateEnd': serializer.toJson<DateTime>(dateEnd),
-    };
-  }
-
-  PlanningEvent copyWith(
-          {int? id,
-          String? user,
-          String? typeEvent,
-          DateTime? dateStart,
-          DateTime? dateEnd}) =>
-      PlanningEvent(
-        id: id ?? this.id,
-        user: user ?? this.user,
-        typeEvent: typeEvent ?? this.typeEvent,
-        dateStart: dateStart ?? this.dateStart,
-        dateEnd: dateEnd ?? this.dateEnd,
-      );
-  @override
-  String toString() {
-    return (StringBuffer('PlanningEvent(')
-          ..write('id: $id, ')
-          ..write('user: $user, ')
-          ..write('typeEvent: $typeEvent, ')
-          ..write('dateStart: $dateStart, ')
-          ..write('dateEnd: $dateEnd')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(id, user, typeEvent, dateStart, dateEnd);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is PlanningEvent &&
-          other.id == this.id &&
-          other.user == this.user &&
-          other.typeEvent == this.typeEvent &&
-          other.dateStart == this.dateStart &&
-          other.dateEnd == this.dateEnd);
-}
-
-class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
-  final Value<int> id;
-  final Value<String> user;
-  final Value<String> typeEvent;
-  final Value<DateTime> dateStart;
-  final Value<DateTime> dateEnd;
-  const PlanningEventsCompanion({
-    this.id = const Value.absent(),
-    this.user = const Value.absent(),
-    this.typeEvent = const Value.absent(),
-    this.dateStart = const Value.absent(),
-    this.dateEnd = const Value.absent(),
-  });
-  PlanningEventsCompanion.insert({
-    this.id = const Value.absent(),
-    required String user,
-    required String typeEvent,
-    required DateTime dateStart,
-    required DateTime dateEnd,
-  })  : user = Value(user),
-        typeEvent = Value(typeEvent),
-        dateStart = Value(dateStart),
-        dateEnd = Value(dateEnd);
-  static Insertable<PlanningEvent> custom({
-    Expression<int>? id,
-    Expression<String>? user,
-    Expression<String>? typeEvent,
-    Expression<DateTime>? dateStart,
-    Expression<DateTime>? dateEnd,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (user != null) 'user': user,
-      if (typeEvent != null) 'type_event': typeEvent,
-      if (dateStart != null) 'date_start': dateStart,
-      if (dateEnd != null) 'date_end': dateEnd,
-    });
-  }
-
-  PlanningEventsCompanion copyWith(
-      {Value<int>? id,
-      Value<String>? user,
-      Value<String>? typeEvent,
-      Value<DateTime>? dateStart,
-      Value<DateTime>? dateEnd}) {
-    return PlanningEventsCompanion(
-      id: id ?? this.id,
-      user: user ?? this.user,
-      typeEvent: typeEvent ?? this.typeEvent,
-      dateStart: dateStart ?? this.dateStart,
-      dateEnd: dateEnd ?? this.dateEnd,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (user.present) {
-      map['user'] = Variable<String>(user.value);
-    }
-    if (typeEvent.present) {
-      map['type_event'] = Variable<String>(typeEvent.value);
-    }
-    if (dateStart.present) {
-      map['date_start'] = Variable<DateTime>(dateStart.value);
-    }
-    if (dateEnd.present) {
-      map['date_end'] = Variable<DateTime>(dateEnd.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('PlanningEventsCompanion(')
-          ..write('id: $id, ')
-          ..write('user: $user, ')
-          ..write('typeEvent: $typeEvent, ')
-          ..write('dateStart: $dateStart, ')
-          ..write('dateEnd: $dateEnd')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class $ChefMessagesTable extends ChefMessages
     with TableInfo<$ChefMessagesTable, ChefMessage> {
   @override
@@ -1503,6 +1209,552 @@ class ChefMessagesCompanion extends UpdateCompanion<ChefMessage> {
           ..write('authorRole: $authorRole, ')
           ..write('group: $group, ')
           ..write('timestamp: $timestamp')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ChefMessageAcksTable extends ChefMessageAcks
+    with TableInfo<$ChefMessageAcksTable, ChefMessageAck> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ChefMessageAcksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _messageIdMeta =
+      const VerificationMeta('messageId');
+  @override
+  late final GeneratedColumn<int> messageId = GeneratedColumn<int>(
+      'message_id', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: true,
+      $customConstraints: 'NOT NULL REFERENCES chef_messages(id)');
+  static const VerificationMeta _trigrammeMeta =
+      const VerificationMeta('trigramme');
+  @override
+  late final GeneratedColumn<String> trigramme = GeneratedColumn<String>(
+      'trigramme', aliasedName, false,
+      additionalChecks:
+          GeneratedColumn.checkTextLength(minTextLength: 1, maxTextLength: 10),
+      type: DriftSqlType.string,
+      requiredDuringInsert: true);
+  static const VerificationMeta _seenAtMeta = const VerificationMeta('seenAt');
+  @override
+  late final GeneratedColumn<DateTime> seenAt = GeneratedColumn<DateTime>(
+      'seen_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [id, messageId, trigramme, seenAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'chef_message_acks';
+  @override
+  VerificationContext validateIntegrity(Insertable<ChefMessageAck> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('message_id')) {
+      context.handle(_messageIdMeta,
+          messageId.isAcceptableOrUnknown(data['message_id']!, _messageIdMeta));
+    } else if (isInserting) {
+      context.missing(_messageIdMeta);
+    }
+    if (data.containsKey('trigramme')) {
+      context.handle(_trigrammeMeta,
+          trigramme.isAcceptableOrUnknown(data['trigramme']!, _trigrammeMeta));
+    } else if (isInserting) {
+      context.missing(_trigrammeMeta);
+    }
+    if (data.containsKey('seen_at')) {
+      context.handle(_seenAtMeta,
+          seenAt.isAcceptableOrUnknown(data['seen_at']!, _seenAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ChefMessageAck map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ChefMessageAck(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      messageId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}message_id'])!,
+      trigramme: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}trigramme'])!,
+      seenAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}seen_at'])!,
+    );
+  }
+
+  @override
+  $ChefMessageAcksTable createAlias(String alias) {
+    return $ChefMessageAcksTable(attachedDatabase, alias);
+  }
+}
+
+class ChefMessageAck extends DataClass implements Insertable<ChefMessageAck> {
+  final int id;
+  final int messageId;
+  final String trigramme;
+  final DateTime seenAt;
+  const ChefMessageAck(
+      {required this.id,
+      required this.messageId,
+      required this.trigramme,
+      required this.seenAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['message_id'] = Variable<int>(messageId);
+    map['trigramme'] = Variable<String>(trigramme);
+    map['seen_at'] = Variable<DateTime>(seenAt);
+    return map;
+  }
+
+  ChefMessageAcksCompanion toCompanion(bool nullToAbsent) {
+    return ChefMessageAcksCompanion(
+      id: Value(id),
+      messageId: Value(messageId),
+      trigramme: Value(trigramme),
+      seenAt: Value(seenAt),
+    );
+  }
+
+  factory ChefMessageAck.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ChefMessageAck(
+      id: serializer.fromJson<int>(json['id']),
+      messageId: serializer.fromJson<int>(json['messageId']),
+      trigramme: serializer.fromJson<String>(json['trigramme']),
+      seenAt: serializer.fromJson<DateTime>(json['seenAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'messageId': serializer.toJson<int>(messageId),
+      'trigramme': serializer.toJson<String>(trigramme),
+      'seenAt': serializer.toJson<DateTime>(seenAt),
+    };
+  }
+
+  ChefMessageAck copyWith(
+          {int? id, int? messageId, String? trigramme, DateTime? seenAt}) =>
+      ChefMessageAck(
+        id: id ?? this.id,
+        messageId: messageId ?? this.messageId,
+        trigramme: trigramme ?? this.trigramme,
+        seenAt: seenAt ?? this.seenAt,
+      );
+  @override
+  String toString() {
+    return (StringBuffer('ChefMessageAck(')
+          ..write('id: $id, ')
+          ..write('messageId: $messageId, ')
+          ..write('trigramme: $trigramme, ')
+          ..write('seenAt: $seenAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, messageId, trigramme, seenAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ChefMessageAck &&
+          other.id == this.id &&
+          other.messageId == this.messageId &&
+          other.trigramme == this.trigramme &&
+          other.seenAt == this.seenAt);
+}
+
+class ChefMessageAcksCompanion extends UpdateCompanion<ChefMessageAck> {
+  final Value<int> id;
+  final Value<int> messageId;
+  final Value<String> trigramme;
+  final Value<DateTime> seenAt;
+  const ChefMessageAcksCompanion({
+    this.id = const Value.absent(),
+    this.messageId = const Value.absent(),
+    this.trigramme = const Value.absent(),
+    this.seenAt = const Value.absent(),
+  });
+  ChefMessageAcksCompanion.insert({
+    this.id = const Value.absent(),
+    required int messageId,
+    required String trigramme,
+    this.seenAt = const Value.absent(),
+  })  : messageId = Value(messageId),
+        trigramme = Value(trigramme);
+  static Insertable<ChefMessageAck> custom({
+    Expression<int>? id,
+    Expression<int>? messageId,
+    Expression<String>? trigramme,
+    Expression<DateTime>? seenAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (messageId != null) 'message_id': messageId,
+      if (trigramme != null) 'trigramme': trigramme,
+      if (seenAt != null) 'seen_at': seenAt,
+    });
+  }
+
+  ChefMessageAcksCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? messageId,
+      Value<String>? trigramme,
+      Value<DateTime>? seenAt}) {
+    return ChefMessageAcksCompanion(
+      id: id ?? this.id,
+      messageId: messageId ?? this.messageId,
+      trigramme: trigramme ?? this.trigramme,
+      seenAt: seenAt ?? this.seenAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (messageId.present) {
+      map['message_id'] = Variable<int>(messageId.value);
+    }
+    if (trigramme.present) {
+      map['trigramme'] = Variable<String>(trigramme.value);
+    }
+    if (seenAt.present) {
+      map['seen_at'] = Variable<DateTime>(seenAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChefMessageAcksCompanion(')
+          ..write('id: $id, ')
+          ..write('messageId: $messageId, ')
+          ..write('trigramme: $trigramme, ')
+          ..write('seenAt: $seenAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PlanningEventsTable extends PlanningEvents
+    with TableInfo<$PlanningEventsTable, PlanningEvent> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlanningEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _userMeta = const VerificationMeta('user');
+  @override
+  late final GeneratedColumn<String> user = GeneratedColumn<String>(
+      'user', aliasedName, false,
+      additionalChecks:
+          GeneratedColumn.checkTextLength(minTextLength: 3, maxTextLength: 3),
+      type: DriftSqlType.string,
+      requiredDuringInsert: true);
+  static const VerificationMeta _typeEventMeta =
+      const VerificationMeta('typeEvent');
+  @override
+  late final GeneratedColumn<String> typeEvent = GeneratedColumn<String>(
+      'type_event', aliasedName, false,
+      additionalChecks:
+          GeneratedColumn.checkTextLength(minTextLength: 2, maxTextLength: 4),
+      type: DriftSqlType.string,
+      requiredDuringInsert: true);
+  static const VerificationMeta _dateStartMeta =
+      const VerificationMeta('dateStart');
+  @override
+  late final GeneratedColumn<DateTime> dateStart = GeneratedColumn<DateTime>(
+      'date_start', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _dateEndMeta =
+      const VerificationMeta('dateEnd');
+  @override
+  late final GeneratedColumn<DateTime> dateEnd = GeneratedColumn<DateTime>(
+      'date_end', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, user, typeEvent, dateStart, dateEnd];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'planning_events';
+  @override
+  VerificationContext validateIntegrity(Insertable<PlanningEvent> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('user')) {
+      context.handle(
+          _userMeta, user.isAcceptableOrUnknown(data['user']!, _userMeta));
+    } else if (isInserting) {
+      context.missing(_userMeta);
+    }
+    if (data.containsKey('type_event')) {
+      context.handle(_typeEventMeta,
+          typeEvent.isAcceptableOrUnknown(data['type_event']!, _typeEventMeta));
+    } else if (isInserting) {
+      context.missing(_typeEventMeta);
+    }
+    if (data.containsKey('date_start')) {
+      context.handle(_dateStartMeta,
+          dateStart.isAcceptableOrUnknown(data['date_start']!, _dateStartMeta));
+    } else if (isInserting) {
+      context.missing(_dateStartMeta);
+    }
+    if (data.containsKey('date_end')) {
+      context.handle(_dateEndMeta,
+          dateEnd.isAcceptableOrUnknown(data['date_end']!, _dateEndMeta));
+    } else if (isInserting) {
+      context.missing(_dateEndMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PlanningEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PlanningEvent(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      user: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user'])!,
+      typeEvent: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}type_event'])!,
+      dateStart: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}date_start'])!,
+      dateEnd: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}date_end'])!,
+    );
+  }
+
+  @override
+  $PlanningEventsTable createAlias(String alias) {
+    return $PlanningEventsTable(attachedDatabase, alias);
+  }
+}
+
+class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
+  final int id;
+  final String user;
+  final String typeEvent;
+  final DateTime dateStart;
+  final DateTime dateEnd;
+  const PlanningEvent(
+      {required this.id,
+      required this.user,
+      required this.typeEvent,
+      required this.dateStart,
+      required this.dateEnd});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['user'] = Variable<String>(user);
+    map['type_event'] = Variable<String>(typeEvent);
+    map['date_start'] = Variable<DateTime>(dateStart);
+    map['date_end'] = Variable<DateTime>(dateEnd);
+    return map;
+  }
+
+  PlanningEventsCompanion toCompanion(bool nullToAbsent) {
+    return PlanningEventsCompanion(
+      id: Value(id),
+      user: Value(user),
+      typeEvent: Value(typeEvent),
+      dateStart: Value(dateStart),
+      dateEnd: Value(dateEnd),
+    );
+  }
+
+  factory PlanningEvent.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PlanningEvent(
+      id: serializer.fromJson<int>(json['id']),
+      user: serializer.fromJson<String>(json['user']),
+      typeEvent: serializer.fromJson<String>(json['typeEvent']),
+      dateStart: serializer.fromJson<DateTime>(json['dateStart']),
+      dateEnd: serializer.fromJson<DateTime>(json['dateEnd']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'user': serializer.toJson<String>(user),
+      'typeEvent': serializer.toJson<String>(typeEvent),
+      'dateStart': serializer.toJson<DateTime>(dateStart),
+      'dateEnd': serializer.toJson<DateTime>(dateEnd),
+    };
+  }
+
+  PlanningEvent copyWith(
+          {int? id,
+          String? user,
+          String? typeEvent,
+          DateTime? dateStart,
+          DateTime? dateEnd}) =>
+      PlanningEvent(
+        id: id ?? this.id,
+        user: user ?? this.user,
+        typeEvent: typeEvent ?? this.typeEvent,
+        dateStart: dateStart ?? this.dateStart,
+        dateEnd: dateEnd ?? this.dateEnd,
+      );
+  @override
+  String toString() {
+    return (StringBuffer('PlanningEvent(')
+          ..write('id: $id, ')
+          ..write('user: $user, ')
+          ..write('typeEvent: $typeEvent, ')
+          ..write('dateStart: $dateStart, ')
+          ..write('dateEnd: $dateEnd')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, user, typeEvent, dateStart, dateEnd);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PlanningEvent &&
+          other.id == this.id &&
+          other.user == this.user &&
+          other.typeEvent == this.typeEvent &&
+          other.dateStart == this.dateStart &&
+          other.dateEnd == this.dateEnd);
+}
+
+class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
+  final Value<int> id;
+  final Value<String> user;
+  final Value<String> typeEvent;
+  final Value<DateTime> dateStart;
+  final Value<DateTime> dateEnd;
+  const PlanningEventsCompanion({
+    this.id = const Value.absent(),
+    this.user = const Value.absent(),
+    this.typeEvent = const Value.absent(),
+    this.dateStart = const Value.absent(),
+    this.dateEnd = const Value.absent(),
+  });
+  PlanningEventsCompanion.insert({
+    this.id = const Value.absent(),
+    required String user,
+    required String typeEvent,
+    required DateTime dateStart,
+    required DateTime dateEnd,
+  })  : user = Value(user),
+        typeEvent = Value(typeEvent),
+        dateStart = Value(dateStart),
+        dateEnd = Value(dateEnd);
+  static Insertable<PlanningEvent> custom({
+    Expression<int>? id,
+    Expression<String>? user,
+    Expression<String>? typeEvent,
+    Expression<DateTime>? dateStart,
+    Expression<DateTime>? dateEnd,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (user != null) 'user': user,
+      if (typeEvent != null) 'type_event': typeEvent,
+      if (dateStart != null) 'date_start': dateStart,
+      if (dateEnd != null) 'date_end': dateEnd,
+    });
+  }
+
+  PlanningEventsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? user,
+      Value<String>? typeEvent,
+      Value<DateTime>? dateStart,
+      Value<DateTime>? dateEnd}) {
+    return PlanningEventsCompanion(
+      id: id ?? this.id,
+      user: user ?? this.user,
+      typeEvent: typeEvent ?? this.typeEvent,
+      dateStart: dateStart ?? this.dateStart,
+      dateEnd: dateEnd ?? this.dateEnd,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (user.present) {
+      map['user'] = Variable<String>(user.value);
+    }
+    if (typeEvent.present) {
+      map['type_event'] = Variable<String>(typeEvent.value);
+    }
+    if (dateStart.present) {
+      map['date_start'] = Variable<DateTime>(dateStart.value);
+    }
+    if (dateEnd.present) {
+      map['date_end'] = Variable<DateTime>(dateEnd.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlanningEventsCompanion(')
+          ..write('id: $id, ')
+          ..write('user: $user, ')
+          ..write('typeEvent: $typeEvent, ')
+          ..write('dateStart: $dateStart, ')
+          ..write('dateEnd: $dateEnd')
           ..write(')'))
         .toString();
   }
@@ -2024,8 +2276,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   late final $UsersTable users = $UsersTable(this);
   late final $MissionsTable missions = $MissionsTable(this);
-  late final $PlanningEventsTable planningEvents = $PlanningEventsTable(this);
   late final $ChefMessagesTable chefMessages = $ChefMessagesTable(this);
+  late final $ChefMessageAcksTable chefMessageAcks =
+      $ChefMessageAcksTable(this);
+  late final $PlanningEventsTable planningEvents = $PlanningEventsTable(this);
   late final $NotificationsTable notifications = $NotificationsTable(this);
   late final $AirportsTable airports = $AirportsTable(this);
   late final MissionDao missionDao = MissionDao(this as AppDatabase);
@@ -2038,6 +2292,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities =>
-      [users, missions, planningEvents, chefMessages, notifications, airports];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+        users,
+        missions,
+        chefMessages,
+        chefMessageAcks,
+        planningEvents,
+        notifications,
+        airports
+      ];
 }

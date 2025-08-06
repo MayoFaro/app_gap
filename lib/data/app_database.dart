@@ -57,7 +57,14 @@ class ChefMessages extends Table {
   TextColumn get group        => text().withLength(min: 4, max: 6)();
   DateTimeColumn get timestamp=> dateTime().withDefault(currentDateAndTime)();
 }
-
+// Table des acknowledgements de lecture par utilisateur
+class ChefMessageAcks extends Table {
+  IntColumn get id         => integer().autoIncrement()();
+  // Déclare explicitement NOT NULL et référence foreign key
+  IntColumn get messageId  => integer().customConstraint('NOT NULL REFERENCES chef_messages(id)')();
+  TextColumn get trigramme => text().withLength(min: 1, max: 10)();
+  DateTimeColumn get seenAt=> dateTime().withDefault(currentDateAndTime)();
+}
 /// Table des notifications
 class Notifications extends Table {
   IntColumn get id         => integer().autoIncrement()();
@@ -82,6 +89,7 @@ class Airports extends Table {
   tables: [
     Users,
     Missions,
+    ChefMessageAcks,
     PlanningEvents,
     ChefMessages,
     Notifications,
@@ -95,10 +103,12 @@ class Airports extends Table {
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  // En test, NativeDatabase.memory() crée une base en mémoire volatile
+  // Remplace _openConnection() qui utilisait un fichier persistant
+  AppDatabase() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

@@ -43,7 +43,7 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
   Future<_MissionsData> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     final fonction = prefs.getString('fonction')?.toLowerCase();
-    final isChef = fonction == 'chef';
+    final isChef = fonction == 'chef' || fonction == 'cdt';
 
     final all = await widget.dao.getAllMissions();
     // Filtrer uniquement vecteurs hélico

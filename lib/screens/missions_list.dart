@@ -43,7 +43,7 @@ class _MissionsListState extends State<MissionsList> {
     final fonction = prefs.getString('fonction')?.toLowerCase();
     final group = prefs.getString('userGroup')?.toLowerCase();
     final all = await widget.dao.getAllMissions();
-    final isChef = fonction == 'chef';
+    final isChef = fonction == 'chef' || fonction == 'cdt';
 
     // Tri chronologique (ascendant)
     all.sort((a, b) => a.date.compareTo(b.date));

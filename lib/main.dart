@@ -14,41 +14,38 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // Initialisation de la BDD
+  // Initialisation de la base locale
   final db = AppDatabase();
 
-  // Charger JSON des users
+  // Chargement du JSON des utilisateurs (assets/users.json)
   final raw = await rootBundle.loadString('assets/users.json');
   final List<dynamic> jsonList = json.decode(raw);
 
-  // Récupérer les emails du JSON
+  // Extraction des emails du JSON
   final jsonEmails = jsonList.map((u) => u['email'] as String).toSet();
 
   // Comptage actuel dans la BDD
   final existing = await db.select(db.users).get();
   final existingEmails = existing.map((u) => u.email ?? '').toSet();
 
-  debugPrint('DEBUG main: JSON emails = $jsonEmails');
-  debugPrint('DEBUG main: DB   emails = $existingEmails');
+  debugPrint('DEBUG main: JSON emails = \$jsonEmails');
+  debugPrint('DEBUG main: DB   emails = \$existingEmails');
 
-  // Synchronisation si différence entre JSON et BDD
+  // Synchronisation si nécessaire
   if (existingEmails != jsonEmails) {
-    debugPrint('INFO main: divergence détectée, synchronisation JSON -> BDD');
-    // Vider la table users
+    debugPrint('INFO main: divergence détectée, synchronisation JSON → BDD');
     await db.delete(db.users).go();
-    // Réinsérer tous les utilisateurs du JSON
     for (final u in jsonList) {
       await db.into(db.users).insert(
         UsersCompanion.insert(
-          trigramme:    u['trigramme'] as String,
-          passwordHash: u['passwordHash'] as String,
-          fonction:     u['fonction'] as String,
-          role:         u['role'] as String,
-          group:        u['group'] as String,
-          fullName:     Value(u['fullName'] as String),
-          phone:        Value(u['phone'] as String),
-          email:        Value(u['email'] as String),
-          isAdmin:      Value(u['isAdmin'] as bool),
+          trigramme: u['trigramme'] as String,
+          fonction:  u['fonction'] as String,
+          role:      u['role'] as String,
+          group:     u['group'] as String,
+          fullName:  Value(u['fullName'] as String),
+          phone:     Value(u['phone'] as String),
+          email:     Value(u['email'] as String),
+          isAdmin:   Value(u['isAdmin'] as bool),
         ),
       );
     }
@@ -56,10 +53,11 @@ Future<void> main() async {
     debugPrint('INFO main: pas de changement détecté, pas de resynchronisation');
   }
 
-  // Lancement de l'application avec la BDD prête
+  // Démarrage de l'application
   runApp(AppGAP(db: db));
 }
 
+/// Widget principal
 class AppGAP extends StatelessWidget {
   final AppDatabase db;
   const AppGAP({Key? key, required this.db}) : super(key: key);
@@ -75,6 +73,7 @@ class AppGAP extends StatelessWidget {
   }
 }
 
+/// Gère la redirection selon l'état d'authentification Firebase
 class AuthGate extends StatefulWidget {
   final AppDatabase db;
   const AuthGate({Key? key, required this.db}) : super(key: key);
@@ -100,15 +99,20 @@ class _AuthGateState extends State<AuthGate> {
         }
         final firebaseUser = snapshot.data;
         if (firebaseUser == null) {
+          // Pas connecté → écran de login
           return AuthScreen(db: widget.db);
         }
+        // Connecté → on récupère les prefs pour le flag isAdmin
         return FutureBuilder<SharedPreferences>(
           future: SharedPreferences.getInstance(),
           builder: (c, prefSnap) {
-            if (!prefSnap.hasData) {
+            if (prefSnap.connectionState != ConnectionState.done) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
-            return HomeScreen(db: widget.db);
+            final prefs = prefSnap.data!;
+            final isAdmin = prefs.getBool('isAdmin') ?? false;
+            // On passe isAdmin à HomeScreen
+            return HomeScreen(db: widget.db, isAdmin: isAdmin);
           },
         );
       },

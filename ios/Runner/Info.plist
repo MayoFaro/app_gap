@@ -2,6 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- iOS : autoriser canOpenURL pour ces schémas -->
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <!-- Téléphonie -->
+      <string>tel</string>
+      <!-- WhatsApp -->
+      <string>whatsapp</string>
+      <!-- si tu veux tester https://wa.me/... -->
+      <string>https</string>
+    </array>
+
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

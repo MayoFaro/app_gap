@@ -1,6 +1,8 @@
+// lib/screens/home_dashboard.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/app_database.dart';
 import '../data/mission_dao.dart';
 import '../data/chef_message_dao.dart';
@@ -8,39 +10,61 @@ import '../data/chef_message_dao.dart';
 /// Dashboard montrant les 5 prochaines missions (avion + hélico) et le dernier message du chef
 class HomeDashboard extends StatefulWidget {
   final AppDatabase db;
-  const HomeDashboard({Key? key, required this.db}) : super(key: key);
+  final ChefMessageDao chefDao;   // DAO pour gérer les acknowledgements
+  final String currentUser;       // Trigramme de l'utilisateur
+
+  const HomeDashboard({
+    Key? key,
+    required this.db,
+    required this.chefDao,
+    required this.currentUser,
+  }) : super(key: key);
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
 }
 
 class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserver {
+  static const _kDismissedKey = 'dismissedChefMessages';
   late final MissionDao _missionDao;
-  late final ChefMessageDao _chefDao;
   late final Stream<List<Mission>> _missionsStream;
-  Future<ChefMessage?>? _latestMessage;
+  late final Future<ChefMessage?> _initFuture;
+  Set<int> _dismissed = {};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _missionDao = MissionDao(widget.db);
-    _chefDao = ChefMessageDao(widget.db);
-
-    // Abonnement à toutes les missions
     _missionsStream = widget.db.select(widget.db.missions).watch();
+    _loadDismissed();
+    _initFuture = _initializeDashboard();  // pré-chargement des acks et du dernier message
+  }
 
-    // Charger le dernier message du chef
-    _latestMessage = _chefDao.getAllMessages().then(
-          (msgs) => msgs.isNotEmpty ? msgs.first : null,
+  Future<ChefMessage?> _initializeDashboard() async {
+    final msgs = await widget.chefDao.getAllMessages();
+    final latest = msgs.isNotEmpty ? msgs.first : null;
+    if (latest != null) {
+      final acks = await widget.chefDao.getAcks(latest.id);
+      if (!acks.any((a) => a.trigramme == widget.currentUser)) {
+        await widget.chefDao.acknowledge(latest.id, widget.currentUser);
+      }
+    }
+    return latest;
+  }
+
+  Future<void> _loadDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_kDismissedKey) ?? [];
+    setState(() => _dismissed = list.map(int.parse).toSet());
+  }
+
+  Future<void> _saveDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _kDismissedKey,
+      _dismissed.map((i) => i.toString()).toList(),
     );
-
-    // Debug: log chaque mise à jour de la liste des missions
-    _missionsStream.listen((missions) {
-      debugPrint('DEBUG Dashboard[stream]: total missions=${missions.length}');
-      final upcomingCount = missions.where((m) => m.date.isAfter(DateTime.now())).length;
-      debugPrint('DEBUG Dashboard[stream]: upcoming=$upcomingCount');
-    });
   }
 
   @override
@@ -55,24 +79,39 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       appBar: AppBar(title: const Text('Dashboard')),
       body: Column(
         children: [
-          // Dernier message du chef
+          // Dernier message du chef avec possibilité de dismiss
           FutureBuilder<ChefMessage?>(
-            future: _latestMessage,
+            future: _initFuture,
             builder: (ctx, snap) {
               if (snap.connectionState != ConnectionState.done) {
                 return const SizedBox();
               }
               final msg = snap.data;
-              if (msg == null) return const SizedBox();
-              return Card(
-                margin: const EdgeInsets.all(8),
-                child: ListTile(
-                  leading: const Icon(Icons.message),
-                  title: Text(msg.content ?? ''),
-                  subtitle: Text(
-                    '${msg.authorRole} • ${msg.group} • '
-                        '${msg.timestamp.toLocal().toIso8601String().replaceFirst('T', ' ')}',
-                    style: const TextStyle(fontSize: 12),
+              if (msg == null || _dismissed.contains(msg.id)) {
+                return const SizedBox();
+              }
+              return Dismissible(
+                key: ValueKey(msg.id),
+                direction: DismissDirection.endToStart,
+                onDismissed: (_) async {
+                  setState(() => _dismissed.add(msg.id));
+                  await _saveDismissed();
+                },
+                background: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                child: Card(
+                  margin: const EdgeInsets.all(8),
+                  child: ListTile(
+                    leading: const Icon(Icons.message),
+                    title: Text(msg.content ?? ''),
+                    subtitle: Text(
+                      '${msg.authorRole} • ${msg.group} • ${msg.timestamp.toLocal().toIso8601String().replaceFirst('T', ' ')}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ),
                 ),
               );
@@ -88,29 +127,16 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 }
                 final allMissions = snapshot.data ?? [];
                 final now = DateTime.now();
-                // Missions à venir, triées chronologiquement
                 final upcomingMissions = allMissions
                     .where((m) => m.date.isAfter(now))
                     .toList()
                   ..sort((a, b) => a.date.compareTo(b.date));
-                debugPrint(
-                  'DEBUG Dashboard: total avion=${allMissions.where((m) => m.vecteur=="ATR72").length}, '
-                      'helico=${allMissions.where((m) => m.vecteur!="ATR72").length}',
-                );
-                debugPrint('DEBUG Dashboard: upcoming count=${upcomingMissions.length}');
-
-                // Affiche jusqu'à 5 missions à venir
                 final display = upcomingMissions.take(5).toList();
-
                 if (display.isEmpty) {
                   return const Center(child: Text('Aucune mission à venir'));
                 }
-
                 return RefreshIndicator(
-                  onRefresh: () async {
-                    debugPrint('DEBUG Dashboard: manual refresh triggered');
-                    setState(() {});
-                  },
+                  onRefresh: () async => setState(() {}),
                   child: ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: display.length,
@@ -122,9 +148,29 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                               ? FontAwesomeIcons.plane
                               : FontAwesomeIcons.helicopter,
                         ),
-                        title: Text(
-                          '${DateFormat('dd/MM').format(m.date)} '
-                              '${DateFormat('HH:mm').format(m.date)}',
+                        title: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${DateFormat('dd/MM').format(m.date)} '
+                                  '${DateFormat('HH:mm').format(m.date)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            if (m.description != null && m.description!.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  m.description!,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 2,
+                                  style: const TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         subtitle: Text(
                           '${m.pilote1}'

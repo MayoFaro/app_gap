@@ -11,6 +11,7 @@ import '../data/notification_dao.dart';
 import 'home_dashboard.dart';
 import 'missions_list.dart';
 import 'missions_helico_list.dart';
+import 'organigramme_screen.dart';
 import 'vol_en_cours_list.dart';
 import 'planning_list.dart';
 import 'tours_de_garde_screen.dart';
@@ -22,7 +23,7 @@ import 'auth_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AppDatabase db;
-  final bool isAdmin;
+  final bool isAdmin; // Ce flag vient de l'écran d'authentification
 
   const HomeScreen({Key? key, required this.db, this.isAdmin = false}) : super(key: key);
 
@@ -38,9 +39,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _userGroup = '';
   String _userTrigram = '---';
+  String _userFonction = ''; // Récupérée depuis la base
   int _currentIndex = 0;
 
-  late List<Widget> _pages;
+  late List<Widget> _pages = [];
   final List<String> _titles = [
     'Accueil',
     'Missions Hebdo',
@@ -56,38 +58,47 @@ class _HomeScreenState extends State<HomeScreen> {
     _chefDao = ChefMessageDao(widget.db);
     _notificationDao = NotificationDao(widget.db);
 
+    // Construction initiale avec valeurs par défaut
+    _pages = _buildPages();
+
+    // Charge trigramme et fonction utilisateur, puis reconstruit l'accueil
     _loadTrigramme().then((_) {
       setState(() {
         _pages = _buildPages();
+        _currentIndex = 0;
       });
     });
-    _pages = _buildPages();
   }
 
   Future<void> _loadTrigramme() async {
     final prefs = await SharedPreferences.getInstance();
-    final trig = prefs.getString('userTrigram') ?? prefs.getString('userTrigramme') ?? '';
+    final trig = prefs.getString('userTrigram') ?? '';
     if (trig.isNotEmpty) {
       try {
-        final user = await (widget.db.select(widget.db.users)
+        final row = await (widget.db.select(widget.db.users)
           ..where((u) => u.trigramme.equals(trig)))
             .getSingle();
         _userTrigram = trig;
-        _userGroup = user.group.toLowerCase();
+        _userGroup = row.group.toLowerCase();
+        _userFonction = row.fonction.toLowerCase(); // Stockage de la fonction
       } catch (_) {
-        // ignore
+        // En cas d'erreur, on reste en valeurs par défaut
       }
     }
   }
 
   List<Widget> _buildPages() {
-    // Écran mission selon le groupe
-    final missionPage = (_userGroup == 'helico')
+    final missionPage =
+    (_userGroup == 'helico')
         ? MissionsHelicoList(dao: _missionDao)
         : MissionsList(dao: _missionDao);
 
     return [
-      HomeDashboard(db: widget.db),
+      HomeDashboard(
+        db: widget.db,
+        chefDao: _chefDao,
+        currentUser: _userTrigram,
+      ),
       missionPage,
       VolEnCoursList(
         dao: _missionDao,
@@ -99,11 +110,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onItemTapped(int index) {
     Navigator.of(context).pop();
-    setState(() => _currentIndex = index);
+    setState(() {
+      _pages = _buildPages();
+      _currentIndex = index;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    // Détermine si l'utilisateur peut modifier l'organigramme
+    final bool canEditOrganigramme =
+        widget.isAdmin; //|| _userFonction == 'chef' || _userFonction == 'cdt';
+
     final title = '${_userTrigram}_appGAP_${_titles[_currentIndex]}';
 
     return Scaffold(
@@ -126,110 +144,139 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: IndexedStack(index: _currentIndex, children: _pages),
       drawer: Drawer(
-        child: ListView(padding: EdgeInsets.zero, children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(color: Colors.blue),
-            child: Text('${_userTrigram}_appGAP',
-                style: const TextStyle(color: Colors.white, fontSize: 24)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.home),
-            title: const Text('Accueil'),
-            onTap: () => _onItemTapped(0),
-          ),
-          ListTile(
-            leading: const Icon(Icons.list),
-            title: const Text('Missions Hebdo'),
-            onTap: () => _onItemTapped(1),
-          ),
-          ListTile(
-            leading: const Icon(Icons.flight),
-            title: const Text('Vols du jour'),
-            onTap: () => _onItemTapped(2),
-          ),
-          ListTile(
-            leading: const Icon(Icons.local_gas_station),
-            title: const Text('Calcul Carburant'),
-            onTap: () => _onItemTapped(3),
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Se déconnecter'),
-            onTap: () async {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => AuthScreen(db: widget.db)),
-                    (route) => false,
-              );
-            },
-          ),
-        ]),
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: const BoxDecoration(color: Colors.blue),
+              child: Text(
+                '${_userTrigram}_appGAP',
+                style: const TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.home),
+              title: const Text('Accueil'),
+              onTap: () => _onItemTapped(0),
+            ),
+            ListTile(
+              leading: const Icon(Icons.list),
+              title: const Text('Missions Hebdo'),
+              onTap: () => _onItemTapped(1),
+            ),
+            ListTile(
+              leading: const Icon(Icons.flight),
+              title: const Text('Vols du jour'),
+              onTap: () => _onItemTapped(2),
+            ),
+            ListTile(
+              leading: const Icon(Icons.local_gas_station),
+              title: const Text('Calcul Carburant'),
+              onTap: () => _onItemTapped(3),
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Se déconnecter'),
+              onTap: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (_) => AuthScreen(db: widget.db),
+                  ),
+                      (route) => false,
+                );
+              },
+            ),
+          ],
+        ),
       ),
       endDrawer: Drawer(
-        child: ListView(padding: EdgeInsets.zero, children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(color: Colors.blue),
-            child: const Text('Administratif',
-                style: TextStyle(color: Colors.white, fontSize: 24)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.calendar_month),
-            title: const Text('Planning annuel'),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => PlanningList(dao: _planningDao),
-              ));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.shield),
-            title: const Text('Tours de garde'),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => ToursDeGardeScreen(
-                  db: widget.db,
-                  isAdmin: widget.isAdmin,
-                ),
-              ));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.account_tree),
-            title: const Text('Organigramme'),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => OrganigrammeList(db: widget.db),
-              ));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.message),
-            title: const Text('Messages du Chef'),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => ChefMessagesList(dao: _chefDao),
-              ));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.notifications),
-            title: const Text('Notifications'),
-            onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => NotificationsScreen(
-                  dao: _notificationDao,
-                  group: _userGroup,
-                ),
-              ));
-            },
-          ),
-        ]),
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: const BoxDecoration(color: Colors.blue),
+              child: const Text(
+                'Administratif',
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_month),
+              title: const Text('Planning annuel'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => PlanningList(dao: _planningDao),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.shield),
+              title: const Text('Tours de garde'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ToursDeGardeScreen(
+                      db: widget.db,
+                      isAdmin: widget.isAdmin,
+                    ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_tree),
+              title: const Text('Organigramme'),
+              onTap: () {
+                Navigator.of(context).pop();
+                // On passe ici le flag computed `canEditOrganigramme`
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => OrganigrammeScreen(
+                      isAdmin: canEditOrganigramme,
+                    ),
+                  ),
+                );
+              },
+            ),
+            if (_userFonction == 'chef' || _userFonction == 'cdt')// || widget.isAdmin)
+              ListTile(
+                leading: const Icon(Icons.message),
+                title: const Text('Messages du Chef'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ChefMessagesList(
+                        dao: _chefDao,
+                        currentUser: _userTrigram,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.notifications),
+              title: const Text('Notifications'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => NotificationsScreen(
+                      dao: _notificationDao,
+                      group: _userGroup,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

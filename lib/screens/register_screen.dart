@@ -100,10 +100,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextFormField(
-                controller: _emailCtrl,
+              TextFormField(controller: _emailCtrl,
                 decoration: const InputDecoration(labelText: 'Email'),
                 keyboardType: TextInputType.emailAddress,
+                textCapitalization: TextCapitalization.none,    // pas de majuscule auto
+                autocorrect: false,                             // pas de correction automatique
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Entrez un email';
                   if (!v.contains('@')) return 'Email invalide';

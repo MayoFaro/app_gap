@@ -3,10 +3,11 @@ import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/app_database.dart';
-import '../data/user_service.dart'; // <-- service hybride Firestore + cache
-import 'register_screen.dart';
+import '../data/user_dao.dart';           // DAO pour accéder à la table Users locale
 import 'home_screen.dart';
+import 'register_screen.dart';
 
+/// Écran d'authentification par email/mot de passe Firebase + validation locale
 class AuthScreen extends StatefulWidget {
   final AppDatabase db;
   const AuthScreen({Key? key, required this.db}) : super(key: key);
@@ -21,45 +22,83 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLoading = false;
   String? _error;
 
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Méthode principale de connexion
   Future<void> _login() async {
     final emailInput = _emailCtrl.text.trim();
-    debugPrint('DEBUG Auth: Login attempt for email=$emailInput');
+    debugPrint('DEBUG Auth: tentative de connexion pour email=$emailInput');
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      // Authentification Firebase
+      // 1) Authentification Firebase par email/mot de passe
       final cred = await fbAuth.FirebaseAuth.instance
-          .signInWithEmailAndPassword(email: emailInput, password: _passCtrl.text);
+          .signInWithEmailAndPassword(
+        email: emailInput,
+        password: _passCtrl.text,
+      );
       final firebaseUser = cred.user;
-      if (firebaseUser == null) throw Exception('Échec de l’authentification');
+      if (firebaseUser == null) {
+        throw Exception('Échec de l’authentification Firebase');
+      }
 
-      // Récupération de l'utilisateur (Firestore + fallback cache)
-      final user = await UserService(db: widget.db).findUserByEmail(emailInput); //The static method 'findUserByEmail' can't be accessed through an instance.
-      if (user == null) throw Exception("Aucun utilisateur trouvé pour cet email");
+      // 2) Vérification locale dans SQLite via UserDao
+      final dao = UserDao(widget.db);
+      final userRow = await dao.getUserByEmail(emailInput);
+      if (userRow == null) {
+        throw Exception("Aucun utilisateur trouvé pour cet email");
+      }
 
-      // Sauvegarde dans les SharedPreferences
+      // 3) Stockage dans SharedPreferences (permets accès global si besoin)
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userTrigram', user.trigramme);//The getter 'trigramme' isn't defined for the type 'Map<String, dynamic>'.
-      await prefs.setString('userGroup', user.group);//The getter 'group' isn't defined for the type 'Map<String, dynamic>'.
-      await prefs.setString('fonction', user.fonction);//The getter 'fonction' isn't defined for the type 'Map<String, dynamic>'.
-      await prefs.setString('role', user.role);//The getter 'role' isn't defined for the type 'Map<String, dynamic>'.
-      await prefs.setBool('isAdmin', user.isAdmin);//The getter 'isAdmin' isn't defined for the type 'Map<String, dynamic>'.
+      await prefs.setString('userTrigram', userRow.trigramme);
+      await prefs.setString('userGroup',   userRow.group);
+      await prefs.setString('fonction',    userRow.fonction);
+      await prefs.setString('role',        userRow.role);
+      await prefs.setBool(  'isAdmin',     userRow.isAdmin);
 
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => HomeScreen(db: widget.db)),
+
+      // 4) Navigation vers HomeScreen en passant le flag isAdmin
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(
+            db: widget.db,
+            isAdmin: userRow.isAdmin, // passe la valeur lue localement
+          ),
+        ),
+            (route) => false,
       );
+    } on fbAuth.FirebaseAuthException catch (e) {
+      // Gestion des erreurs Firebase (mauvais mdp, utilisateur inexistant, etc.)
+      debugPrint('DEBUG Auth: FirebaseAuthException -> ${e.code}');
+      setState(() {
+        _error = e.message;
+      });
     } catch (e) {
-      debugPrint('DEBUG Auth: Login failed: $e');
-      setState(() => _error = e.toString());
+      // Erreurs génériques (DAO, SQLite, logique métier, etc.)
+      debugPrint('DEBUG Auth: erreur -> $e');
+      setState(() {
+        _error = e.toString();
+      });
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
+  /// Redirection vers l'écran d'inscription
   void _goToRegister() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => RegisterScreen(db: widget.db)),
@@ -69,26 +108,30 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Authentification')),
+      appBar: AppBar(title: const Text('Connexion')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             TextField(
               controller: _emailCtrl,
               decoration: const InputDecoration(labelText: 'Email'),
               keyboardType: TextInputType.emailAddress,
+              textCapitalization: TextCapitalization.none,
+              autocorrect: false,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextField(
               controller: _passCtrl,
               decoration: const InputDecoration(labelText: 'Mot de passe'),
               obscureText: true,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             if (_error != null) ...[
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
               const SizedBox(height: 12),
             ],
             _isLoading

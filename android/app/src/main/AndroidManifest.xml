@@ -1,4 +1,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <!-- Pour détecter l'appli Téléphone (ACTION_DIAL) -->
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
+            <data android:scheme="tel"/>
+        </intent>
+        <!-- Pour détecter WhatsApp via son schéma natif -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="whatsapp"/>
+        </intent>
+        <!-- Pour détecter l'ouverture de https://wa.me/... -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+            <data android:host="wa.me"/>
+        </intent>
+    </queries>
+
+
+
     <application
         android:label="aptest"
         android:name="${applicationName}"
@@ -42,4 +63,5 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
+    <uses-permission android:name="android.permission.CALL_PHONE" />
 </manifest>
