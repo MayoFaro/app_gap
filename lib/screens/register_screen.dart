@@ -1,11 +1,18 @@
+// lib/screens/register_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/app_database.dart';
 import 'home_screen.dart';
 
-/// Écran d'inscription d'un nouvel utilisateur (profil pré-défini dans users.json)
+/// Inscription :
+/// 1) crée le compte FirebaseAuth
+/// 2) retrouve le profil local (table Users issue de users.json)
+/// 3) crée /users/{uid} dans Firestore (fonction, group, trigramme, role, email)
+/// 4) stocke le contexte utilisateur en SharedPreferences
+/// 5) navigue vers HomeScreen
 class RegisterScreen extends StatefulWidget {
   final AppDatabase db;
   const RegisterScreen({Key? key, required this.db}) : super(key: key);
@@ -19,6 +26,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+
   bool _isLoading = false;
   String? _error;
 
@@ -32,57 +40,101 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _onRegister() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     final email = _emailCtrl.text.trim();
-    final password = _passCtrl.text;
-    debugPrint('DEBUG Register: tentative inscription for email=$email');
+    final psw = _passCtrl.text.trim();
+
+    fbAuth.User? fbUser;
 
     try {
-      // Création du compte Firebase
+      debugPrint('REGISTER: start for email="$email"');
+
+      // 1) Création FirebaseAuth
       final cred = await fbAuth.FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      final fbUser = cred.user;
-      if (fbUser == null) throw Exception('Inscription Firebase échouée');
-
-      // Debug: lister tous les emails en base JSON
-      final allUsers = await widget.db.select(widget.db.users).get();
-      debugPrint('DEBUG Register: users.json emails=${allUsers.map((u) => u.email).toList()}');
-
-      // Lookup profil JSON
-      final row = await (widget.db.select(widget.db.users)
-        ..where((u) => u.email.equals(email)))
-          .getSingleOrNull();
-      debugPrint('DEBUG Register: JSON-DB lookup row=$row');
-
-      if (row == null) {
-        // Aucun profil associé, on supprime le compte Firebase
-        await fbUser.delete();
-        throw Exception('Aucun profil utilisateur associé à cet email.');
+          .createUserWithEmailAndPassword(email: email, password: psw);
+      fbUser = cred.user;
+      if (fbUser == null) {
+        throw Exception('Inscription Firebase échouée (user null)');
       }
+      debugPrint('REGISTER: FirebaseAuth OK, uid=${fbUser.uid}');
 
-      // Stockage des prefs
+      // 2) Lookup profil local (insensible à la casse)
+      final all = await widget.db.select(widget.db.users).get();
+      final lowerEmail = email.toLowerCase();
+      final row = all.firstWhere(
+            (u) => (u.email ?? '').toLowerCase() == lowerEmail,
+        orElse: () => throw Exception('Aucun profil utilisateur associé à cet email.'),
+      );
+      debugPrint('REGISTER: local profile found -> '
+          'tri=${row.trigramme}, group=${row.group}, role=${row.role}, fonction=${row.fonction}, isAdmin=${row.isAdmin}');
+
+      // 3) Écrit /users/{uid} sur Firestore (requis par tes rules)
+      await FirebaseFirestore.instance.collection('users').doc(fbUser.uid).set({
+        'trigramme': row.trigramme,
+        'fonction': row.fonction, // "chef" | "cdt" | ...
+        'role': row.role,         // "pilote" | "mecano"
+        'group': row.group,       // "avion" | "helico"
+        'email': email,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('REGISTER: Firestore /users/${fbUser.uid} created');
+
+      // 4) SharedPreferences (clés attendues ailleurs dans l’app)
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('userUid', fbUser.uid);
       await prefs.setString('userTrigram', row.trigramme);
       await prefs.setString('userGroup', row.group);
-      await prefs.setString('fonction', row.fonction);
+      await prefs.setString('fonction', row.fonction);      // <- utilisé par Missions*
       await prefs.setString('role', row.role);
       await prefs.setBool('isAdmin', row.isAdmin);
+      // (par sécurité si du code lit encore cette clé)
+      await prefs.setString('userFunction', row.fonction);
+
+      debugPrint('REGISTER: prefs saved -> '
+          'trig=${row.trigramme}, group=${row.group}, fonction=${row.fonction}, role=${row.role}, isAdmin=${row.isAdmin}');
 
       if (!mounted) return;
-      // Aller à l'écran home
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => HomeScreen(db: widget.db)),
-            (route) => false,
+            (_) => false,
       );
+    } on fbAuth.FirebaseAuthException catch (e) {
+      String msg;
+      switch (e.code) {
+        case 'weak-password':
+          msg = 'Mot de passe trop faible.';
+          break;
+        case 'email-already-in-use':
+          msg = 'Cet email est déjà utilisé.';
+          break;
+        case 'invalid-email':
+          msg = 'Email invalide.';
+          break;
+        default:
+          msg = e.message ?? 'Erreur FirebaseAuth.';
+      }
+      debugPrint('REGISTER: FirebaseAuthException -> ${e.code} / ${e.message}');
+      // si on a créé un user FB mais problème ensuite (profil introuvable...), on le supprime
+      if (fbUser != null) {
+        try {
+          await fbUser.delete();
+          debugPrint('REGISTER: fbUser deleted due to failure');
+        } catch (_) {}
+      }
+      setState(() => _error = msg);
     } catch (e) {
-      debugPrint('DEBUG Register: erreur -> $e');
+      debugPrint('REGISTER: Exception -> $e');
+      if (fbUser != null) {
+        try {
+          await fbUser.delete();
+          debugPrint('REGISTER: fbUser deleted due to failure');
+        } catch (_) {}
+      }
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -97,16 +149,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: ListView(
+            shrinkWrap: true,
             children: [
-              TextFormField(controller: _emailCtrl,
+              TextFormField(
+                controller: _emailCtrl,
                 decoration: const InputDecoration(labelText: 'Email'),
                 keyboardType: TextInputType.emailAddress,
-                textCapitalization: TextCapitalization.none,    // pas de majuscule auto
-                autocorrect: false,                             // pas de correction automatique
+                textCapitalization: TextCapitalization.none,
+                autocorrect: false,
                 validator: (v) {
-                  if (v == null || v.isEmpty) return 'Entrez un email';
+                  if (v == null || v.trim().isEmpty) return 'Entrez un email';
                   if (!v.contains('@')) return 'Email invalide';
                   return null;
                 },
@@ -125,11 +178,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _confirmCtrl,
-                decoration: const InputDecoration(labelText: 'Confirmez mot de passe'),
+                decoration: const InputDecoration(labelText: 'Confirmez le mot de passe'),
                 obscureText: true,
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Confirmez votre mot de passe';
-                  if (v != _passCtrl.text) return 'Les mots de passe ne correspondent pas';
+                  if (v != _passCtrl.text) return 'Mots de passe différents';
                   return null;
                 },
               ),
@@ -139,7 +192,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 12),
               ],
               _isLoading
-                  ? const CircularProgressIndicator()
+                  ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton(
                 onPressed: _onRegister,
                 child: const Text('Créer le compte'),

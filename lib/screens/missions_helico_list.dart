@@ -1,27 +1,31 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 import '../data/app_database.dart';
 import '../data/mission_dao.dart';
 
-/// Liste des destinations hélico
-const List<String> helicoDestinations = [
-  '--', 'FOGK', 'FOGR', 'FOOL', 'FOON', 'FOOG', 'FOGO'
-];
+/// Destinations hélico (+ "--" pour laisser vide)
+const List<String> helicoDestinations = ['--', 'FOGK', 'FOGR', 'FOOL', 'FOON', 'FOOG', 'FOGO'];
 
-/// Contient les missions filtrées et l’autorisation chef
 class _MissionsData {
   final List<Mission> missions;
   final bool isChef;
   _MissionsData({required this.missions, required this.isChef});
 }
 
+/// Écran des missions hebdo (HÉLICO).
+/// `canEdit` est injecté depuis HomeScreen (on ne lit plus les prefs ici).
 class MissionsHelicoList extends StatefulWidget {
   final MissionDao dao;
-  const MissionsHelicoList({Key? key, required this.dao}) : super(key: key);
+  final bool canEdit;
+
+  const MissionsHelicoList({
+    Key? key,
+    required this.dao,
+    required this.canEdit,
+  }) : super(key: key);
 
   @override
   State<MissionsHelicoList> createState() => _MissionsHelicoListState();
@@ -41,54 +45,51 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
   }
 
   Future<_MissionsData> _loadData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final fonction = prefs.getString('fonction')?.toLowerCase();
-    final isChef = fonction == 'chef' || fonction == 'cdt';
-
     final all = await widget.dao.getAllMissions();
-    // Filtrer uniquement vecteurs hélico
     const helicoVec = ['AH175', 'EC225'];
     final filtered = all
         .where((m) => helicoVec.contains(m.vecteur))
         .toList()
       ..sort((a, b) => a.date.compareTo(b.date));
 
-    return _MissionsData(missions: filtered, isChef: isChef);
+    final data = _MissionsData(missions: filtered, isChef: widget.canEdit);
+    debugPrint('DEBUG MissionsHelico._loadData: isChef=${data.isChef}, count=${data.missions.length}');
+    return data;
   }
 
   Future<void> _showMissionDialog({Mission? mission}) async {
-    final prefs = await SharedPreferences.getInstance();
+    // Équipages: p1 = pilote hélico ; p2/p3 = pilote|mecano hélico
     final allUsers = await widget.dao.attachedDatabase
         .select(widget.dao.attachedDatabase.users)
         .get();
-    // Pilote1 => rôle pilote & groupe hélico
-    final pilotes1 = ['--'] + allUsers
-        .where((u) => u.role.toLowerCase() == 'pilote' && u.group.toLowerCase() == 'helico')
-        .map((u) => u.trigramme)
-        .toList();
-    // Pilote2/3 => rôle pilote ou mécano & groupe hélico
-    final pilotes23 = ['--'] + allUsers
-        .where((u) => (u.role.toLowerCase() == 'pilote' || u.role.toLowerCase() == 'mecano') && u.group.toLowerCase() == 'helico')
-        .map((u) => u.trigramme)
-        .toList();
 
-    // Vecteur switch
+    final pilotes1 = ['--'] +
+        allUsers
+            .where((u) => u.role.toLowerCase() == 'pilote' && u.group.toLowerCase() == 'helico')
+            .map((u) => u.trigramme)
+            .toList();
+
+    final pilotes23 = ['--'] +
+        allUsers
+            .where((u) =>
+        u.group.toLowerCase() == 'helico' &&
+            (u.role.toLowerCase() == 'pilote' || u.role.toLowerCase() == 'mecano'))
+            .map((u) => u.trigramme)
+            .toList();
+
+    // Vecteur au choix
     const vecteurs = ['AH175', 'EC225'];
     String chosenVect = mission?.vecteur ?? vecteurs.first;
 
-    // Date et heure initiales
+    // borne à aujourd’hui
     final now = DateTime.now();
     final minDate = DateTime(now.year, now.month, now.day);
     DateTime chosenDate = mission?.date ?? minDate;
     if (chosenDate.isBefore(minDate)) chosenDate = minDate;
 
-    // Destination initiale
+    // Destination & heure
     String chosenDest = mission?.destinationCode ?? helicoDestinations.first;
-
-    // Heure en "HH:mm"
-    String chosenTime = mission != null
-        ? DateFormat('HH:mm').format(mission.date)
-        : '08:30';
+    String chosenTime = mission != null ? DateFormat('HH:mm').format(mission.date) : '08:30';
 
     // Pilotes initiaux
     String p1 = mission?.pilote1 ?? pilotes1.first;
@@ -97,7 +98,7 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
 
     final remarkCtrl = TextEditingController(text: mission?.description);
 
-    // Liste des heures par pas de 30min
+    // Heures par pas de 30 mn
     final times = List.generate(48, (i) {
       final h = i ~/ 2;
       final m = (i % 2) * 30;
@@ -113,21 +114,25 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Appareil
                 const Text('Appareil'),
                 SizedBox(
-                  height: 60,
+                  height: 50,
                   child: CupertinoSegmentedControl<String>(
                     groupValue: chosenVect,
-                    children: {for (var v in vecteurs)
-                      v: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                        child: Text(v),
-                      )
+                    children: {
+                      for (var v in vecteurs)
+                        v: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                          child: Text(v),
+                        )
                     },
                     onValueChanged: (v) => setSt(() => chosenVect = v),
                   ),
                 ),
                 const SizedBox(height: 8),
+
+                // Date (flèches ±1 jour)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -145,21 +150,27 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
                   ],
                 ),
                 const SizedBox(height: 8),
+
+                // Destination
                 const Text('Destination'),
                 SizedBox(
-                  height: 80,
+                  height: 60,
                   child: CupertinoPicker(
                     looping: true,
                     itemExtent: 24,
-                    scrollController: FixedExtentScrollController(initialItem: helicoDestinations.indexOf(chosenDest)),
+                    scrollController: FixedExtentScrollController(
+                      initialItem: helicoDestinations.indexOf(chosenDest),
+                    ),
                     onSelectedItemChanged: (i) => setSt(() => chosenDest = helicoDestinations[i]),
                     children: helicoDestinations.map((d) => Center(child: Text(d))).toList(),
                   ),
                 ),
                 const SizedBox(height: 8),
+
+                // Heure
                 const Text('Heure'),
                 SizedBox(
-                  height: 80,
+                  height: 60,
                   child: CupertinoPicker(
                     looping: true,
                     itemExtent: 24,
@@ -169,9 +180,11 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text('Pilote 1'),
+
+                // Pilote 1
+                const Text('Pil1'),
                 SizedBox(
-                  height: 80,
+                  height: 60,
                   child: CupertinoPicker(
                     looping: true,
                     itemExtent: 24,
@@ -181,9 +194,11 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text('Pilote 2'),
+
+                // Pilote 2
+                const Text('Pil2'),
                 SizedBox(
-                  height: 80,
+                  height: 60,
                   child: CupertinoPicker(
                     looping: true,
                     itemExtent: 24,
@@ -193,9 +208,11 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text('Pilote 3'),
+
+                // Pilote 3
+                const Text('Pil3'),
                 SizedBox(
-                  height: 80,
+                  height: 60,
                   child: CupertinoPicker(
                     looping: true,
                     itemExtent: 24,
@@ -205,6 +222,8 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
                   ),
                 ),
                 const SizedBox(height: 8),
+
+                // Remarque
                 const Text('Remarque'),
                 TextField(controller: remarkCtrl),
               ],
@@ -259,6 +278,8 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
         ),
       ),
     );
+
+    // après fermeture, recharger la liste
     _refreshData();
     setState(() {});
   }
@@ -284,9 +305,14 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
               return GestureDetector(
                 onLongPress: data.isChef ? () => _showMissionDialog(mission: m) : null,
                 child: ListTile(
-                  title: Text('${m.date.day.toString().padLeft(2,'0')}/${m.date.month.toString().padLeft(2,'0')}  ${m.vecteur}'),
+                  title: Text(
+                    '${m.date.day.toString().padLeft(2, '0')}/${m.date.month.toString().padLeft(2, '0')}  ${m.vecteur}',
+                  ),
                   subtitle: Text(
-                      '${DateFormat('HH:mm').format(m.date)} • ${m.pilote1}/${m.pilote2}/${m.pilote3} → ${m.destinationCode}${m.description!=null?" – ${m.description}":""}'
+                    '${DateFormat('HH:mm').format(m.date)} • '
+                        '${m.pilote1}/${m.pilote2}/${m.pilote3} → '
+                        '${m.destinationCode}'
+                        '${m.description != null ? ' – ${m.description}' : ''}',
                   ),
                 ),
               );
@@ -297,9 +323,9 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
       floatingActionButton: FutureBuilder<_MissionsData>(
         future: _dataFuture,
         builder: (ctx, snap) {
-          if (snap.connectionState != ConnectionState.done || !(snap.data?.isChef ?? false)) {
-            return const SizedBox.shrink();
-          }
+          final show = snap.connectionState == ConnectionState.done && (snap.data?.isChef ?? false);
+          debugPrint('DEBUG MissionsHelico.FAB: state=${snap.connectionState}, isChef=${snap.data?.isChef}');
+          if (!show) return const SizedBox.shrink();
           return FloatingActionButton(
             onPressed: () => _showMissionDialog(),
             child: const Icon(Icons.add),

@@ -1,96 +1,175 @@
 // lib/screens/tours_de_garde_screen.dart
+//
+// Affiche 3 colonnes (TWR, BAR, CRM) de trigrammes triés :
+//  - par date de dernière occurrence (plus ancien en tête)
+//  - tie-break TWR à date égale : rang (1 avant 2 avant 3)
+// Déduplication des trigrammes si plusieurs users Firestore partagent le même trigramme.
+
 import 'package:flutter/material.dart';
-import '../data/app_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Écran des tours de garde (TWR, BAR, CRM)
-/// - Liste triée selon date de dernière occurrence
-/// - L'admin peut déplacer un utilisateur en fin de liste via le bouton « Fait »
 class ToursDeGardeScreen extends StatefulWidget {
-  final AppDatabase db;
+  const ToursDeGardeScreen({Key? key, this.isAdmin = false}) : super(key: key);
   final bool isAdmin;
-
-  const ToursDeGardeScreen({
-    super.key,
-    required this.db,
-    this.isAdmin = false,
-  });
 
   @override
   State<ToursDeGardeScreen> createState() => _ToursDeGardeScreenState();
 }
 
 class _ToursDeGardeScreenState extends State<ToursDeGardeScreen> {
-  List<User> _twr = [];
-  List<User> _bar = [];
-  List<User> _crm = [];
   bool _loading = true;
+
+  List<String> _twr = [];
+  List<String> _bar = [];
+  List<String> _crm = [];
 
   @override
   void initState() {
     super.initState();
-    _buildListsFromPlanning();
+    _loadAndSort();
   }
 
   DateTime _maxDate(DateTime? a, DateTime b) {
     if (a == null) return b;
-    return a.isAfter(b) ? a : b;
+    return b.isAfter(a) ? b : a;
   }
 
-  Future<void> _buildListsFromPlanning() async {
-    final users = await widget.db.select(widget.db.users).get();
-    final events = await widget.db.select(widget.db.planningEvents).get();
+  Future<void> _loadAndSort() async {
+    // 1) Charger les users
+    final usersSnap = await FirebaseFirestore.instance.collection('users').get();
 
-    // Map user-> last occurrence date for each type
-    final Map<String, DateTime> lastTwr = {};
-    final Map<String, DateTime> lastBar = {};
-    final Map<String, DateTime> lastCrm = {};
+    // uid -> data ; tri -> uid (on garde le 1er uid rencontré pour un trigramme donné)
+    final Map<String, Map<String, dynamic>> uidToData = {};
+    final Map<String, String> triToUid = {};
+    final Set<String> trigrammesSet = {}; // Set pour dédupliquer
 
-    for (final e in events) {
-      final date = e.dateStart;
-      switch (e.typeEvent) {
+    for (final d in usersSnap.docs) {
+      final data = d.data();
+      uidToData[d.id] = data;
+
+      final triRaw = data['trigramme'];
+      if (triRaw is String) {
+        final tri = triRaw.trim();
+        if (tri.isNotEmpty) {
+          trigrammesSet.add(tri);                 // dédup
+          triToUid.putIfAbsent(tri, () => d.id);  // n’écrase pas si déjà présent
+        }
+      }
+    }
+
+    final List<String> trigrammes = trigrammesSet.toList();
+
+    // 2) Charger les events
+    final eventsSnap =
+    await FirebaseFirestore.instance.collection('planningEvents').get();
+
+    // Maps de dernière occurrence
+    final Map<String, DateTime> lastTwrDate = {};
+    final Map<String, int>      lastTwrRank = {}; // rang associé à la dernière date
+    final Map<String, DateTime> lastBar     = {};
+    final Map<String, DateTime> lastCrm     = {};
+
+    for (final doc in eventsSnap.docs) {
+      final e = doc.data();
+      final type = e['typeEvent'] as String?;
+      final uid  = e['user'] as String?;          // UID Firestore
+      final ts   = e['dateStart'] as Timestamp?;
+      if (type == null || uid == null || ts == null) continue;
+
+      // On lit directement le trigramme via uid -> data
+      final trigram = uidToData[uid]?['trigramme'] as String?;
+      if (trigram == null) continue;
+
+      final d = ts.toDate();
+      final date = DateTime(d.year, d.month, d.day);
+
+      switch (type) {
         case 'TWR':
-          lastTwr[e.user] = _maxDate(lastTwr[e.user], date);
+          final r = e['rank'];
+          final rank = (r is int && r >= 1 && r <= 3) ? r : 2; // défaut raisonnable
+          final prevDate = lastTwrDate[trigram];
+          if (prevDate == null || date.isAfter(prevDate)) {
+            lastTwrDate[trigram] = date;
+            lastTwrRank[trigram] = rank;
+          } else if (prevDate.isAtSameMomentAs(date)) {
+            // même jour → on garde le plus petit rang (1 avant 2 avant 3)
+            final oldRank = lastTwrRank[trigram] ?? 2;
+            if (rank < oldRank) lastTwrRank[trigram] = rank;
+          }
           break;
+
         case 'BAR':
-          lastBar[e.user] = _maxDate(lastBar[e.user], date);
+          lastBar[trigram] = _maxDate(lastBar[trigram], date);
           break;
+
         case 'CRM':
-          lastCrm[e.user] = _maxDate(lastCrm[e.user], date);
+          lastCrm[trigram] = _maxDate(lastCrm[trigram], date);
           break;
       }
     }
 
-    List<User> sortByLast(List<User> list, Map<String, DateTime> lastMap) {
+    // 3) Filtres par rôle/fonction (typés)
+    final pilots = trigrammes.where((t) {
+      final uid = triToUid[t];
+      final map = (uid != null) ? uidToData[uid] : null;
+      final role = (map == null) ? null : map['role'] as String?;
+      return role == 'pilote';
+    }).toList();
+
+    final mecs = trigrammes.where((t) {
+      final uid = triToUid[t];
+      final map = (uid != null) ? uidToData[uid] : null;
+      final role = (map == null) ? null : map['role'] as String?;
+      return role == 'mecano';
+    }).toList();
+
+    final crms = trigrammes.where((t) {
+      final uid = triToUid[t];
+      final map = (uid != null) ? uidToData[uid] : null;
+      final fonction = (map == null) ? null : map['fonction'] as String?;
+      return fonction != 'CDT';
+    }).toList();
+
+    // 4) Tri : ancien en premier, tie-break TWR par rang
+    List<String> sortTwr(List<String> list) {
       final copy = [...list];
       copy.sort((a, b) {
-        final da = lastMap[a.trigramme] ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final db_ = lastMap[b.trigramme] ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final cmp = da.compareTo(db_);
-        return cmp != 0 ? cmp : a.trigramme.compareTo(b.trigramme);
+        final da = lastTwrDate[a] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final db = lastTwrDate[b] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final cmp = da.compareTo(db);
+        if (cmp != 0) return cmp;
+        final ra = lastTwrRank[a] ?? 2;
+        final rb = lastTwrRank[b] ?? 2;
+        final rc = ra.compareTo(rb);
+        return rc != 0 ? rc : a.compareTo(b);
       });
-      return copy;
+      // Sécurité anti-doublons, tout en préservant l’ordre obtenu
+      final seen = <String>{};
+      return [for (final t in copy) if (seen.add(t)) t];
     }
 
-    final pilots = users.where((u) => u.role == 'pilot').toList();
-    final mechs  = users.where((u) => u.role == 'mecanicien').toList();
-    final both   = users.where((u) => u.role == 'pilot' || u.role == 'mecanicien').toList();
+    List<String> sortByLast(List<String> list, Map<String, DateTime> lastMap) {
+      final copy = [...list];
+      copy.sort((a, b) {
+        final da = lastMap[a] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final db = lastMap[b] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final cmp = da.compareTo(db);
+        return cmp != 0 ? cmp : a.compareTo(b);
+      });
+      final seen = <String>{};
+      return [for (final t in copy) if (seen.add(t)) t];
+    }
 
+    if (!mounted) return;
     setState(() {
-      _twr = sortByLast(pilots, lastTwr);
-      _bar = sortByLast(mechs, lastBar);
-      _crm = sortByLast(both, lastCrm);
+      _twr = sortTwr(pilots);
+      _bar = sortByLast(mecs, lastBar);
+      _crm = sortByLast(crms, lastCrm);
       _loading = false;
     });
   }
 
-  void _markDone(List<User> list, User user) {
-    setState(() {
-      list.remove(user);
-      list.add(user);
-    });
-  }
-
-  Widget _buildList(String title, List<User> list) {
+  Widget _buildColumn(String title, List<String> list) {
     return Expanded(
       child: Card(
         margin: const EdgeInsets.all(8),
@@ -105,19 +184,10 @@ class _ToursDeGardeScreenState extends State<ToursDeGardeScreen> {
             Expanded(
               child: ListView.builder(
                 itemCount: list.length,
-                itemBuilder: (_, i) {
-                  final u = list[i];
-                  return ListTile(
-                    title: Text(u.fullName ?? u.trigramme),
-                    subtitle: Text(u.trigramme),
-                    trailing: widget.isAdmin
-                        ? ElevatedButton(
-                      onPressed: () => _markDone(list, u),
-                      child: const Text('Fait'),
-                    )
-                        : null,
-                  );
-                },
+                itemBuilder: (_, i) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+                  child: Text(list[i], style: const TextStyle(fontSize: 16)),
+                ),
               ),
             ),
           ],
@@ -135,9 +205,9 @@ class _ToursDeGardeScreenState extends State<ToursDeGardeScreen> {
       appBar: AppBar(title: const Text('Tours de Garde')),
       body: Row(
         children: [
-          _buildList('TWR (Pilotes)', _twr),
-          _buildList('BAR (Mécanos)', _bar),
-          _buildList('CRM (Pilotes & Mécanos)', _crm),
+          _buildColumn('TWR', _twr),
+          _buildColumn('BAR', _bar),
+          _buildColumn('CRM', _crm),
         ],
       ),
     );

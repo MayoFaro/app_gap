@@ -1,25 +1,30 @@
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'dart:math';
-import 'package:drift/drift.dart' hide Column;
 
 import '../data/app_database.dart';
 import '../data/mission_dao.dart';
 import '../data/destinations.dart';
 
-/// Contient les missions filtrées et l'autorisation
+/// Contient la liste + droit d’édition
 class _MissionsData {
   final List<Mission> missions;
   final bool isChef;
   _MissionsData({required this.missions, required this.isChef});
 }
 
-/// Écran des missions hebdo
+/// Écran des missions hebdo (AVION).
+/// `canEdit` est fourni par HomeScreen (fiable) — on ne lit plus la fonction depuis les prefs ici.
 class MissionsList extends StatefulWidget {
   final MissionDao dao;
-  const MissionsList({Key? key, required this.dao}) : super(key: key);
+  final bool canEdit;
+
+  const MissionsList({
+    Key? key,
+    required this.dao,
+    required this.canEdit,
+  }) : super(key: key);
 
   @override
   State<MissionsList> createState() => _MissionsListState();
@@ -39,46 +44,49 @@ class _MissionsListState extends State<MissionsList> {
   }
 
   Future<_MissionsData> _loadData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final fonction = prefs.getString('fonction')?.toLowerCase();
-    final group = prefs.getString('userGroup')?.toLowerCase();
     final all = await widget.dao.getAllMissions();
-    final isChef = fonction == 'chef' || fonction == 'cdt';
+    // Avion uniquement
+    final filtered = all
+        .where((m) => m.vecteur == 'ATR72')
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
 
-    // Tri chronologique (ascendant)
-    all.sort((a, b) => a.date.compareTo(b.date));
-    return _MissionsData(missions: all, isChef: isChef);
+    final data = _MissionsData(missions: filtered, isChef: widget.canEdit);
+    debugPrint('DEBUG MissionsList._loadData: isChef=${data.isChef}, count=${data.missions.length}');
+    return data;
   }
 
-  /// Affiche le dialogue d'ajout / édition
+  /// Dialogue d’ajout / édition
   Future<void> _showMissionDialog({Mission? mission}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final group = prefs.getString('userGroup')?.toLowerCase() ?? 'avion';
+    // Destinations avion: liste `destinations` déjà existante
     final users = await widget.dao.attachedDatabase.select(widget.dao.attachedDatabase.users).get();
     final pilotes = users
-        .where((u) => u.role.toLowerCase() == 'pilote' && u.group.toLowerCase() == group)
+        .where((u) => u.role.toLowerCase() == 'pilote' && u.group.toLowerCase() == 'avion')
         .map((u) => u.trigramme)
         .toList();
-    const vecteursMap = {'avion': 'ATR72', 'helico': 'AH175'};
-    final defaultVecteur = vecteursMap[group] ?? '';
 
-    // Date minimale = aujourd'hui
+    const defaultVecteur = 'ATR72';
+
+    // borne à aujourd’hui
     final now = DateTime.now();
     final minDate = DateTime(now.year, now.month, now.day);
 
-    // Valeurs initiales
+    // valeurs initiales
     DateTime chosenDate = mission?.date ?? minDate;
     if (chosenDate.isBefore(minDate)) chosenDate = minDate;
+
     String chosenDest = mission?.destinationCode
         ?? (destinations.contains('FOON') ? 'FOON' : destinations.first);
+
     String chosenTime = mission != null
         ? DateFormat('HH:mm').format(mission.date)
         : '08:30';
+
     String chosenP1 = mission?.pilote1 ?? (pilotes.isNotEmpty ? pilotes.first : '');
     String chosenP2 = mission?.pilote2 ?? (pilotes.length > 1 ? pilotes[1] : chosenP1);
     final remarkCtrl = TextEditingController(text: mission?.description ?? '');
 
-    // Liste des heures
+    // heures par pas de 30 min
     final times = List.generate(48, (i) {
       final h = i ~/ 2;
       final m = (i % 2) * 30;
@@ -114,6 +122,7 @@ class _MissionsListState extends State<MissionsList> {
                       ],
                     ),
                     const SizedBox(height: 8),
+
                     // Destination
                     const Text('Destination'),
                     SizedBox(
@@ -121,12 +130,15 @@ class _MissionsListState extends State<MissionsList> {
                       child: CupertinoPicker(
                         looping: true,
                         itemExtent: 32,
-                        scrollController: FixedExtentScrollController(initialItem: destinations.indexOf(chosenDest)),
+                        scrollController: FixedExtentScrollController(
+                          initialItem: destinations.indexOf(chosenDest),
+                        ),
                         onSelectedItemChanged: (i) => setStateInner(() => chosenDest = destinations[i]),
                         children: destinations.map((d) => Center(child: Text(d))).toList(),
                       ),
                     ),
                     const SizedBox(height: 8),
+
                     // Heure
                     const Text('Heure de décollage'),
                     SizedBox(
@@ -134,38 +146,46 @@ class _MissionsListState extends State<MissionsList> {
                       child: CupertinoPicker(
                         looping: true,
                         itemExtent: 32,
-                        scrollController: FixedExtentScrollController(initialItem: times.indexOf(chosenTime)),
+                        scrollController: FixedExtentScrollController(
+                          initialItem: times.indexOf(chosenTime),
+                        ),
                         onSelectedItemChanged: (i) => setStateInner(() => chosenTime = times[i]),
                         children: times.map((t) => Center(child: Text(t))).toList(),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Pilote 1
+
+                    // Pilotes
                     const Text('Pilote 1'),
                     SizedBox(
                       height: 80,
                       child: CupertinoPicker(
                         looping: true,
                         itemExtent: 32,
-                        scrollController: FixedExtentScrollController(initialItem: pilotes.indexOf(chosenP1)),
+                        scrollController: FixedExtentScrollController(
+                          initialItem: pilotes.indexOf(chosenP1),
+                        ),
                         onSelectedItemChanged: (i) => setStateInner(() => chosenP1 = pilotes[i]),
                         children: pilotes.map((p) => Center(child: Text(p))).toList(),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Pilote 2
+
                     const Text('Pilote 2'),
                     SizedBox(
                       height: 80,
                       child: CupertinoPicker(
                         looping: true,
                         itemExtent: 32,
-                        scrollController: FixedExtentScrollController(initialItem: pilotes.indexOf(chosenP2)),
+                        scrollController: FixedExtentScrollController(
+                          initialItem: pilotes.indexOf(chosenP2),
+                        ),
                         onSelectedItemChanged: (i) => setStateInner(() => chosenP2 = pilotes[i]),
                         children: pilotes.map((p) => Center(child: Text(p))).toList(),
                       ),
                     ),
                     const SizedBox(height: 8),
+
                     // Remarque
                     const Text('Remarque'),
                     TextField(controller: remarkCtrl),
@@ -221,7 +241,8 @@ class _MissionsListState extends State<MissionsList> {
         );
       },
     );
-    // Après fermeture du dialogue
+
+    // après fermeture, recharger la liste
     _refreshData();
     setState(() {});
   }
@@ -229,7 +250,7 @@ class _MissionsListState extends State<MissionsList> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Missions Hebdo')),
+      appBar: AppBar(title: const Text('Missions Hebdo (Avion)')),
       body: FutureBuilder<_MissionsData>(
         future: _dataFuture,
         builder: (context, snap) {
@@ -238,7 +259,7 @@ class _MissionsListState extends State<MissionsList> {
           }
           final data = snap.data!;
           if (data.missions.isEmpty) {
-            return const Center(child: Text('Aucune mission disponible'));
+            return const Center(child: Text('Aucune mission avion'));
           }
           return ListView.builder(
             itemCount: data.missions.length,
@@ -249,7 +270,10 @@ class _MissionsListState extends State<MissionsList> {
                 child: ListTile(
                   title: Text(DateFormat('dd/MM').format(m.date)),
                   subtitle: Text(
-                    '${DateFormat('HH:mm').format(m.date)} • ${m.pilote1}${m.pilote2 != null ? '/${m.pilote2}' : ''} → ${m.destinationCode}${m.description != null ? ' – ${m.description}' : ''}',
+                    '${DateFormat('HH:mm').format(m.date)} • '
+                        '${m.pilote1}${m.pilote2 != null ? '/${m.pilote2}' : ''} → '
+                        '${m.destinationCode}'
+                        '${m.description != null ? ' – ${m.description}' : ''}',
                   ),
                 ),
               );
@@ -260,9 +284,10 @@ class _MissionsListState extends State<MissionsList> {
       floatingActionButton: FutureBuilder<_MissionsData>(
         future: _dataFuture,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done || !(snap.data?.isChef ?? false)) {
-            return const SizedBox.shrink();
-          }
+          // On se base sur le canEdit passé par Home (à l’intérieur du snapshot)
+          final show = snap.connectionState == ConnectionState.done && (snap.data?.isChef ?? false);
+          debugPrint('DEBUG MissionsList.FAB: state=${snap.connectionState}, isChef=${snap.data?.isChef}');
+          if (!show) return const SizedBox.shrink();
           return FloatingActionButton(
             onPressed: () => _showMissionDialog(),
             child: const Icon(Icons.add),

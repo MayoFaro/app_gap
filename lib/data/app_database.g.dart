@@ -489,6 +489,26 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
   late final GeneratedColumn<DateTime> actualArrival =
       GeneratedColumn<DateTime>('actual_arrival', aliasedName, true,
           type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _remoteIdMeta =
+      const VerificationMeta('remoteId');
+  @override
+  late final GeneratedColumn<String> remoteId = GeneratedColumn<String>(
+      'remote_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -500,7 +520,10 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
         destinationCode,
         description,
         actualDeparture,
-        actualArrival
+        actualArrival,
+        remoteId,
+        createdAt,
+        updatedAt
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -567,6 +590,18 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
           actualArrival.isAcceptableOrUnknown(
               data['actual_arrival']!, _actualArrivalMeta));
     }
+    if (data.containsKey('remote_id')) {
+      context.handle(_remoteIdMeta,
+          remoteId.isAcceptableOrUnknown(data['remote_id']!, _remoteIdMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
     return context;
   }
 
@@ -596,6 +631,12 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
           DriftSqlType.dateTime, data['${effectivePrefix}actual_departure']),
       actualArrival: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}actual_arrival']),
+      remoteId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}remote_id']),
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at']),
     );
   }
 
@@ -616,6 +657,9 @@ class Mission extends DataClass implements Insertable<Mission> {
   final String? description;
   final DateTime? actualDeparture;
   final DateTime? actualArrival;
+  final String? remoteId;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
   const Mission(
       {required this.id,
       required this.date,
@@ -626,7 +670,10 @@ class Mission extends DataClass implements Insertable<Mission> {
       required this.destinationCode,
       this.description,
       this.actualDeparture,
-      this.actualArrival});
+      this.actualArrival,
+      this.remoteId,
+      required this.createdAt,
+      this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -649,6 +696,13 @@ class Mission extends DataClass implements Insertable<Mission> {
     }
     if (!nullToAbsent || actualArrival != null) {
       map['actual_arrival'] = Variable<DateTime>(actualArrival);
+    }
+    if (!nullToAbsent || remoteId != null) {
+      map['remote_id'] = Variable<String>(remoteId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
     }
     return map;
   }
@@ -675,6 +729,13 @@ class Mission extends DataClass implements Insertable<Mission> {
       actualArrival: actualArrival == null && nullToAbsent
           ? const Value.absent()
           : Value(actualArrival),
+      remoteId: remoteId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteId),
+      createdAt: Value(createdAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
     );
   }
 
@@ -692,6 +753,9 @@ class Mission extends DataClass implements Insertable<Mission> {
       description: serializer.fromJson<String?>(json['description']),
       actualDeparture: serializer.fromJson<DateTime?>(json['actualDeparture']),
       actualArrival: serializer.fromJson<DateTime?>(json['actualArrival']),
+      remoteId: serializer.fromJson<String?>(json['remoteId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
     );
   }
   @override
@@ -708,6 +772,9 @@ class Mission extends DataClass implements Insertable<Mission> {
       'description': serializer.toJson<String?>(description),
       'actualDeparture': serializer.toJson<DateTime?>(actualDeparture),
       'actualArrival': serializer.toJson<DateTime?>(actualArrival),
+      'remoteId': serializer.toJson<String?>(remoteId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
     };
   }
 
@@ -721,7 +788,10 @@ class Mission extends DataClass implements Insertable<Mission> {
           String? destinationCode,
           Value<String?> description = const Value.absent(),
           Value<DateTime?> actualDeparture = const Value.absent(),
-          Value<DateTime?> actualArrival = const Value.absent()}) =>
+          Value<DateTime?> actualArrival = const Value.absent(),
+          Value<String?> remoteId = const Value.absent(),
+          DateTime? createdAt,
+          Value<DateTime?> updatedAt = const Value.absent()}) =>
       Mission(
         id: id ?? this.id,
         date: date ?? this.date,
@@ -736,6 +806,9 @@ class Mission extends DataClass implements Insertable<Mission> {
             : this.actualDeparture,
         actualArrival:
             actualArrival.present ? actualArrival.value : this.actualArrival,
+        remoteId: remoteId.present ? remoteId.value : this.remoteId,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
       );
   @override
   String toString() {
@@ -749,14 +822,29 @@ class Mission extends DataClass implements Insertable<Mission> {
           ..write('destinationCode: $destinationCode, ')
           ..write('description: $description, ')
           ..write('actualDeparture: $actualDeparture, ')
-          ..write('actualArrival: $actualArrival')
+          ..write('actualArrival: $actualArrival, ')
+          ..write('remoteId: $remoteId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, date, vecteur, pilote1, pilote2, pilote3,
-      destinationCode, description, actualDeparture, actualArrival);
+  int get hashCode => Object.hash(
+      id,
+      date,
+      vecteur,
+      pilote1,
+      pilote2,
+      pilote3,
+      destinationCode,
+      description,
+      actualDeparture,
+      actualArrival,
+      remoteId,
+      createdAt,
+      updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -770,7 +858,10 @@ class Mission extends DataClass implements Insertable<Mission> {
           other.destinationCode == this.destinationCode &&
           other.description == this.description &&
           other.actualDeparture == this.actualDeparture &&
-          other.actualArrival == this.actualArrival);
+          other.actualArrival == this.actualArrival &&
+          other.remoteId == this.remoteId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class MissionsCompanion extends UpdateCompanion<Mission> {
@@ -784,6 +875,9 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
   final Value<String?> description;
   final Value<DateTime?> actualDeparture;
   final Value<DateTime?> actualArrival;
+  final Value<String?> remoteId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> updatedAt;
   const MissionsCompanion({
     this.id = const Value.absent(),
     this.date = const Value.absent(),
@@ -795,6 +889,9 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     this.description = const Value.absent(),
     this.actualDeparture = const Value.absent(),
     this.actualArrival = const Value.absent(),
+    this.remoteId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   MissionsCompanion.insert({
     this.id = const Value.absent(),
@@ -807,6 +904,9 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     this.description = const Value.absent(),
     this.actualDeparture = const Value.absent(),
     this.actualArrival = const Value.absent(),
+    this.remoteId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   })  : date = Value(date),
         vecteur = Value(vecteur),
         pilote1 = Value(pilote1),
@@ -822,6 +922,9 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     Expression<String>? description,
     Expression<DateTime>? actualDeparture,
     Expression<DateTime>? actualArrival,
+    Expression<String>? remoteId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -834,6 +937,9 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
       if (description != null) 'description': description,
       if (actualDeparture != null) 'actual_departure': actualDeparture,
       if (actualArrival != null) 'actual_arrival': actualArrival,
+      if (remoteId != null) 'remote_id': remoteId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
@@ -847,7 +953,10 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
       Value<String>? destinationCode,
       Value<String?>? description,
       Value<DateTime?>? actualDeparture,
-      Value<DateTime?>? actualArrival}) {
+      Value<DateTime?>? actualArrival,
+      Value<String?>? remoteId,
+      Value<DateTime>? createdAt,
+      Value<DateTime?>? updatedAt}) {
     return MissionsCompanion(
       id: id ?? this.id,
       date: date ?? this.date,
@@ -859,6 +968,9 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
       description: description ?? this.description,
       actualDeparture: actualDeparture ?? this.actualDeparture,
       actualArrival: actualArrival ?? this.actualArrival,
+      remoteId: remoteId ?? this.remoteId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -895,6 +1007,15 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     if (actualArrival.present) {
       map['actual_arrival'] = Variable<DateTime>(actualArrival.value);
     }
+    if (remoteId.present) {
+      map['remote_id'] = Variable<String>(remoteId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     return map;
   }
 
@@ -910,7 +1031,10 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
           ..write('destinationCode: $destinationCode, ')
           ..write('description: $description, ')
           ..write('actualDeparture: $actualDeparture, ')
-          ..write('actualArrival: $actualArrival')
+          ..write('actualArrival: $actualArrival, ')
+          ..write('remoteId: $remoteId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -1510,9 +1634,29 @@ class $PlanningEventsTable extends PlanningEvents
   late final GeneratedColumn<DateTime> dateEnd = GeneratedColumn<DateTime>(
       'date_end', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _uidMeta = const VerificationMeta('uid');
+  @override
+  late final GeneratedColumn<String> uid = GeneratedColumn<String>(
+      'uid', aliasedName, false,
+      additionalChecks:
+          GeneratedColumn.checkTextLength(minTextLength: 1, maxTextLength: 64),
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(''));
+  static const VerificationMeta _firestoreIdMeta =
+      const VerificationMeta('firestoreId');
+  @override
+  late final GeneratedColumn<String> firestoreId = GeneratedColumn<String>(
+      'firestore_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rankMeta = const VerificationMeta('rank');
+  @override
+  late final GeneratedColumn<int> rank = GeneratedColumn<int>(
+      'rank', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, user, typeEvent, dateStart, dateEnd];
+      [id, user, typeEvent, dateStart, dateEnd, uid, firestoreId, rank];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1550,6 +1694,20 @@ class $PlanningEventsTable extends PlanningEvents
     } else if (isInserting) {
       context.missing(_dateEndMeta);
     }
+    if (data.containsKey('uid')) {
+      context.handle(
+          _uidMeta, uid.isAcceptableOrUnknown(data['uid']!, _uidMeta));
+    }
+    if (data.containsKey('firestore_id')) {
+      context.handle(
+          _firestoreIdMeta,
+          firestoreId.isAcceptableOrUnknown(
+              data['firestore_id']!, _firestoreIdMeta));
+    }
+    if (data.containsKey('rank')) {
+      context.handle(
+          _rankMeta, rank.isAcceptableOrUnknown(data['rank']!, _rankMeta));
+    }
     return context;
   }
 
@@ -1569,6 +1727,12 @@ class $PlanningEventsTable extends PlanningEvents
           .read(DriftSqlType.dateTime, data['${effectivePrefix}date_start'])!,
       dateEnd: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}date_end'])!,
+      uid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}uid'])!,
+      firestoreId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}firestore_id']),
+      rank: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}rank']),
     );
   }
 
@@ -1584,12 +1748,18 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
   final String typeEvent;
   final DateTime dateStart;
   final DateTime dateEnd;
+  final String uid;
+  final String? firestoreId;
+  final int? rank;
   const PlanningEvent(
       {required this.id,
       required this.user,
       required this.typeEvent,
       required this.dateStart,
-      required this.dateEnd});
+      required this.dateEnd,
+      required this.uid,
+      this.firestoreId,
+      this.rank});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1598,6 +1768,13 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
     map['type_event'] = Variable<String>(typeEvent);
     map['date_start'] = Variable<DateTime>(dateStart);
     map['date_end'] = Variable<DateTime>(dateEnd);
+    map['uid'] = Variable<String>(uid);
+    if (!nullToAbsent || firestoreId != null) {
+      map['firestore_id'] = Variable<String>(firestoreId);
+    }
+    if (!nullToAbsent || rank != null) {
+      map['rank'] = Variable<int>(rank);
+    }
     return map;
   }
 
@@ -1608,6 +1785,11 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
       typeEvent: Value(typeEvent),
       dateStart: Value(dateStart),
       dateEnd: Value(dateEnd),
+      uid: Value(uid),
+      firestoreId: firestoreId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(firestoreId),
+      rank: rank == null && nullToAbsent ? const Value.absent() : Value(rank),
     );
   }
 
@@ -1620,6 +1802,9 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
       typeEvent: serializer.fromJson<String>(json['typeEvent']),
       dateStart: serializer.fromJson<DateTime>(json['dateStart']),
       dateEnd: serializer.fromJson<DateTime>(json['dateEnd']),
+      uid: serializer.fromJson<String>(json['uid']),
+      firestoreId: serializer.fromJson<String?>(json['firestoreId']),
+      rank: serializer.fromJson<int?>(json['rank']),
     );
   }
   @override
@@ -1631,6 +1816,9 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
       'typeEvent': serializer.toJson<String>(typeEvent),
       'dateStart': serializer.toJson<DateTime>(dateStart),
       'dateEnd': serializer.toJson<DateTime>(dateEnd),
+      'uid': serializer.toJson<String>(uid),
+      'firestoreId': serializer.toJson<String?>(firestoreId),
+      'rank': serializer.toJson<int?>(rank),
     };
   }
 
@@ -1639,13 +1827,19 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
           String? user,
           String? typeEvent,
           DateTime? dateStart,
-          DateTime? dateEnd}) =>
+          DateTime? dateEnd,
+          String? uid,
+          Value<String?> firestoreId = const Value.absent(),
+          Value<int?> rank = const Value.absent()}) =>
       PlanningEvent(
         id: id ?? this.id,
         user: user ?? this.user,
         typeEvent: typeEvent ?? this.typeEvent,
         dateStart: dateStart ?? this.dateStart,
         dateEnd: dateEnd ?? this.dateEnd,
+        uid: uid ?? this.uid,
+        firestoreId: firestoreId.present ? firestoreId.value : this.firestoreId,
+        rank: rank.present ? rank.value : this.rank,
       );
   @override
   String toString() {
@@ -1654,13 +1848,17 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
           ..write('user: $user, ')
           ..write('typeEvent: $typeEvent, ')
           ..write('dateStart: $dateStart, ')
-          ..write('dateEnd: $dateEnd')
+          ..write('dateEnd: $dateEnd, ')
+          ..write('uid: $uid, ')
+          ..write('firestoreId: $firestoreId, ')
+          ..write('rank: $rank')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, user, typeEvent, dateStart, dateEnd);
+  int get hashCode => Object.hash(
+      id, user, typeEvent, dateStart, dateEnd, uid, firestoreId, rank);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1669,7 +1867,10 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
           other.user == this.user &&
           other.typeEvent == this.typeEvent &&
           other.dateStart == this.dateStart &&
-          other.dateEnd == this.dateEnd);
+          other.dateEnd == this.dateEnd &&
+          other.uid == this.uid &&
+          other.firestoreId == this.firestoreId &&
+          other.rank == this.rank);
 }
 
 class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
@@ -1678,12 +1879,18 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
   final Value<String> typeEvent;
   final Value<DateTime> dateStart;
   final Value<DateTime> dateEnd;
+  final Value<String> uid;
+  final Value<String?> firestoreId;
+  final Value<int?> rank;
   const PlanningEventsCompanion({
     this.id = const Value.absent(),
     this.user = const Value.absent(),
     this.typeEvent = const Value.absent(),
     this.dateStart = const Value.absent(),
     this.dateEnd = const Value.absent(),
+    this.uid = const Value.absent(),
+    this.firestoreId = const Value.absent(),
+    this.rank = const Value.absent(),
   });
   PlanningEventsCompanion.insert({
     this.id = const Value.absent(),
@@ -1691,6 +1898,9 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
     required String typeEvent,
     required DateTime dateStart,
     required DateTime dateEnd,
+    this.uid = const Value.absent(),
+    this.firestoreId = const Value.absent(),
+    this.rank = const Value.absent(),
   })  : user = Value(user),
         typeEvent = Value(typeEvent),
         dateStart = Value(dateStart),
@@ -1701,6 +1911,9 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
     Expression<String>? typeEvent,
     Expression<DateTime>? dateStart,
     Expression<DateTime>? dateEnd,
+    Expression<String>? uid,
+    Expression<String>? firestoreId,
+    Expression<int>? rank,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1708,6 +1921,9 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
       if (typeEvent != null) 'type_event': typeEvent,
       if (dateStart != null) 'date_start': dateStart,
       if (dateEnd != null) 'date_end': dateEnd,
+      if (uid != null) 'uid': uid,
+      if (firestoreId != null) 'firestore_id': firestoreId,
+      if (rank != null) 'rank': rank,
     });
   }
 
@@ -1716,13 +1932,19 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
       Value<String>? user,
       Value<String>? typeEvent,
       Value<DateTime>? dateStart,
-      Value<DateTime>? dateEnd}) {
+      Value<DateTime>? dateEnd,
+      Value<String>? uid,
+      Value<String?>? firestoreId,
+      Value<int?>? rank}) {
     return PlanningEventsCompanion(
       id: id ?? this.id,
       user: user ?? this.user,
       typeEvent: typeEvent ?? this.typeEvent,
       dateStart: dateStart ?? this.dateStart,
       dateEnd: dateEnd ?? this.dateEnd,
+      uid: uid ?? this.uid,
+      firestoreId: firestoreId ?? this.firestoreId,
+      rank: rank ?? this.rank,
     );
   }
 
@@ -1744,6 +1966,15 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
     if (dateEnd.present) {
       map['date_end'] = Variable<DateTime>(dateEnd.value);
     }
+    if (uid.present) {
+      map['uid'] = Variable<String>(uid.value);
+    }
+    if (firestoreId.present) {
+      map['firestore_id'] = Variable<String>(firestoreId.value);
+    }
+    if (rank.present) {
+      map['rank'] = Variable<int>(rank.value);
+    }
     return map;
   }
 
@@ -1754,7 +1985,10 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
           ..write('user: $user, ')
           ..write('typeEvent: $typeEvent, ')
           ..write('dateStart: $dateStart, ')
-          ..write('dateEnd: $dateEnd')
+          ..write('dateEnd: $dateEnd, ')
+          ..write('uid: $uid, ')
+          ..write('firestoreId: $firestoreId, ')
+          ..write('rank: $rank')
           ..write(')'))
         .toString();
   }
@@ -2282,7 +2516,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PlanningEventsTable planningEvents = $PlanningEventsTable(this);
   late final $NotificationsTable notifications = $NotificationsTable(this);
   late final $AirportsTable airports = $AirportsTable(this);
-  late final MissionDao missionDao = MissionDao(this as AppDatabase);
   late final PlanningDao planningDao = PlanningDao(this as AppDatabase);
   late final ChefMessageDao chefMessageDao =
       ChefMessageDao(this as AppDatabase);
