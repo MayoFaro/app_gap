@@ -36,12 +36,25 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _missionDao = MissionDao(widget.db);
+
     _missionsStream = widget.db.select(widget.db.missions).watch();
     _loadDismissed();
-    _initFuture = _initializeDashboard();  // pré-chargement des acks et du dernier message
+
+    _initFuture = _initializeDashboard();
   }
 
   Future<ChefMessage?> _initializeDashboard() async {
+    // 🔄 Sync Firestore -> Drift
+    await _missionDao.pullFromRemote().then((_) {
+      debugPrint("SYNC(HomeDashboard): Missions locales rafraîchies depuis Firestore.");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("🔄 Synchronisation des missions terminée")),
+        );
+      }
+    });
+
+    // 👉 Logique messages du chef
     final msgs = await widget.chefDao.getAllMessages();
     final latest = msgs.isNotEmpty ? msgs.first : null;
     if (latest != null) {

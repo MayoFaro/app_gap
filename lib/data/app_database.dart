@@ -46,11 +46,16 @@ class Missions extends Table {
   TextColumn     get description      => text().nullable()();
   DateTimeColumn get actualDeparture  => dateTime().nullable()();
   DateTimeColumn get actualArrival    => dateTime().nullable()();
-  TextColumn get remoteId => text().nullable()(); // id du doc Firestore
-  DateTimeColumn get createdAt =>
+  TextColumn     get remoteId         => text().nullable()(); // id du doc Firestore
+  DateTimeColumn get createdAt        =>
       dateTime().withDefault(currentDateAndTime)(); // set côté local
-  DateTimeColumn get updatedAt => dateTime().nullable()(); // MAJ locales
+  DateTimeColumn get updatedAt        => dateTime().nullable()(); // MAJ locales
+
+  /// Nouveau champ: synchro Firestore
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+  TextColumn     get hourStart        => text().nullable()();
 }
+
 
 /// Table des événements de planification
 ///
@@ -132,7 +137,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 9; // <- bump (ajout de rank)
+  int get schemaVersion => 10; // <- bump (ajout de rank)
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -151,6 +156,10 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(missions, missions.remoteId);
         await m.addColumn(missions, missions.createdAt);
         await m.addColumn(missions, missions.updatedAt);
+      }
+      if (from < 10) {
+        await m.addColumn(missions, missions.isSynced);
+        await m.addColumn(missions, missions.hourStart); // ajout du champ
       }
       await m.createAll();
     },

@@ -1,3 +1,4 @@
+// lib/screens/missions_helico_list.dart
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -6,7 +7,6 @@ import 'package:intl/intl.dart';
 import '../data/app_database.dart';
 import '../data/mission_dao.dart';
 
-/// Destinations hélico (+ "--" pour laisser vide)
 const List<String> helicoDestinations = ['--', 'FOGK', 'FOGR', 'FOOL', 'FOON', 'FOOG', 'FOGO'];
 
 class _MissionsData {
@@ -15,17 +15,11 @@ class _MissionsData {
   _MissionsData({required this.missions, required this.isChef});
 }
 
-/// Écran des missions hebdo (HÉLICO).
-/// `canEdit` est injecté depuis HomeScreen (on ne lit plus les prefs ici).
 class MissionsHelicoList extends StatefulWidget {
   final MissionDao dao;
   final bool canEdit;
 
-  const MissionsHelicoList({
-    Key? key,
-    required this.dao,
-    required this.canEdit,
-  }) : super(key: key);
+  const MissionsHelicoList({Key? key, required this.dao, required this.canEdit}) : super(key: key);
 
   @override
   State<MissionsHelicoList> createState() => _MissionsHelicoListState();
@@ -47,41 +41,35 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
   Future<_MissionsData> _loadData() async {
     final all = await widget.dao.getAllMissions();
     const helicoVec = ['AH175', 'EC225'];
-    final filtered = all
-        .where((m) => helicoVec.contains(m.vecteur))
-        .toList()
+    final filtered = all.where((m) => helicoVec.contains(m.vecteur)).toList()
       ..sort((a, b) => a.date.compareTo(b.date));
 
-    final data = _MissionsData(missions: filtered, isChef: widget.canEdit);
-    debugPrint('DEBUG MissionsHelico._loadData: isChef=${data.isChef}, count=${data.missions.length}');
-    return data;
+    return _MissionsData(missions: filtered, isChef: widget.canEdit);
   }
 
   Future<void> _showMissionDialog({Mission? mission}) async {
-    // Équipages: p1 = pilote hélico ; p2/p3 = pilote|mecano hélico
+    // Récup équipages hélico
     final allUsers = await widget.dao.attachedDatabase
         .select(widget.dao.attachedDatabase.users)
         .get();
 
     final pilotes1 = ['--'] +
         allUsers
-            .where((u) => u.role.toLowerCase() == 'pilote' && u.group.toLowerCase() == 'helico')
+            .where((u) => u.group.toLowerCase() == 'helico' && u.role.toLowerCase() == 'pilote')
             .map((u) => u.trigramme)
             .toList();
 
     final pilotes23 = ['--'] +
         allUsers
-            .where((u) =>
-        u.group.toLowerCase() == 'helico' &&
-            (u.role.toLowerCase() == 'pilote' || u.role.toLowerCase() == 'mecano'))
+            .where((u) => u.group.toLowerCase() == 'helico' && (u.role.toLowerCase() == 'pilote' || u.role.toLowerCase() == 'mecano'))
             .map((u) => u.trigramme)
             .toList();
 
-    // Vecteur au choix
+    // Vecteurs hélico
     const vecteurs = ['AH175', 'EC225'];
     String chosenVect = mission?.vecteur ?? vecteurs.first;
 
-    // borne à aujourd’hui
+    // Date bornée à aujourd’hui
     final now = DateTime.now();
     final minDate = DateTime(now.year, now.month, now.day);
     DateTime chosenDate = mission?.date ?? minDate;
@@ -116,19 +104,10 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
               children: [
                 // Appareil
                 const Text('Appareil'),
-                SizedBox(
-                  height: 50,
-                  child: CupertinoSegmentedControl<String>(
-                    groupValue: chosenVect,
-                    children: {
-                      for (var v in vecteurs)
-                        v: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                          child: Text(v),
-                        )
-                    },
-                    onValueChanged: (v) => setSt(() => chosenVect = v),
-                  ),
+                CupertinoSegmentedControl<String>(
+                  groupValue: chosenVect,
+                  children: {for (var v in vecteurs) v: Padding(padding: const EdgeInsets.all(6), child: Text(v))},
+                  onValueChanged: (v) => setSt(() => chosenVect = v),
                 ),
                 const SizedBox(height: 8),
 
@@ -137,89 +116,63 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: chosenDate.isAfter(minDate)
-                          ? () => setSt(() => chosenDate = chosenDate.subtract(const Duration(days: 1)))
-                          : null,
-                    ),
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: chosenDate.isAfter(minDate)
+                            ? () => setSt(() => chosenDate = chosenDate.subtract(const Duration(days: 1)))
+                            : null),
                     Text(DateFormat('dd/MM/yyyy').format(chosenDate)),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: () => setSt(() => chosenDate = chosenDate.add(const Duration(days: 1))),
-                    ),
+                    IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setSt(() => chosenDate = chosenDate.add(const Duration(days: 1)))),
                   ],
                 ),
                 const SizedBox(height: 8),
 
                 // Destination
                 const Text('Destination'),
-                SizedBox(
-                  height: 60,
-                  child: CupertinoPicker(
-                    looping: true,
-                    itemExtent: 24,
-                    scrollController: FixedExtentScrollController(
-                      initialItem: helicoDestinations.indexOf(chosenDest),
-                    ),
-                    onSelectedItemChanged: (i) => setSt(() => chosenDest = helicoDestinations[i]),
-                    children: helicoDestinations.map((d) => Center(child: Text(d))).toList(),
-                  ),
+                CupertinoPicker(
+                  itemExtent: 24,
+                  scrollController: FixedExtentScrollController(initialItem: helicoDestinations.indexOf(chosenDest)),
+                  onSelectedItemChanged: (i) => setSt(() => chosenDest = helicoDestinations[i]),
+                  children: helicoDestinations.map((d) => Center(child: Text(d))).toList(),
                 ),
                 const SizedBox(height: 8),
 
                 // Heure
                 const Text('Heure'),
-                SizedBox(
-                  height: 60,
-                  child: CupertinoPicker(
-                    looping: true,
-                    itemExtent: 24,
-                    scrollController: FixedExtentScrollController(initialItem: times.indexOf(chosenTime)),
-                    onSelectedItemChanged: (i) => setSt(() => chosenTime = times[i]),
-                    children: times.map((t) => Center(child: Text(t))).toList(),
-                  ),
+                CupertinoPicker(
+                  itemExtent: 24,
+                  scrollController: FixedExtentScrollController(initialItem: times.indexOf(chosenTime)),
+                  onSelectedItemChanged: (i) => setSt(() => chosenTime = times[i]),
+                  children: times.map((t) => Center(child: Text(t))).toList(),
                 ),
                 const SizedBox(height: 8),
 
                 // Pilote 1
                 const Text('Pil1'),
-                SizedBox(
-                  height: 60,
-                  child: CupertinoPicker(
-                    looping: true,
-                    itemExtent: 24,
-                    scrollController: FixedExtentScrollController(initialItem: pilotes1.indexOf(p1)),
-                    onSelectedItemChanged: (i) => setSt(() => p1 = pilotes1[i]),
-                    children: pilotes1.map((p) => Center(child: Text(p))).toList(),
-                  ),
+                CupertinoPicker(
+                  itemExtent: 24,
+                  scrollController: FixedExtentScrollController(initialItem: pilotes1.indexOf(p1)),
+                  onSelectedItemChanged: (i) => setSt(() => p1 = pilotes1[i]),
+                  children: pilotes1.map((p) => Center(child: Text(p))).toList(),
                 ),
                 const SizedBox(height: 8),
 
                 // Pilote 2
                 const Text('Pil2'),
-                SizedBox(
-                  height: 60,
-                  child: CupertinoPicker(
-                    looping: true,
-                    itemExtent: 24,
-                    scrollController: FixedExtentScrollController(initialItem: pilotes23.indexOf(p2)),
-                    onSelectedItemChanged: (i) => setSt(() => p2 = pilotes23[i]),
-                    children: pilotes23.map((p) => Center(child: Text(p))).toList(),
-                  ),
+                CupertinoPicker(
+                  itemExtent: 24,
+                  scrollController: FixedExtentScrollController(initialItem: pilotes23.indexOf(p2)),
+                  onSelectedItemChanged: (i) => setSt(() => p2 = pilotes23[i]),
+                  children: pilotes23.map((p) => Center(child: Text(p))).toList(),
                 ),
                 const SizedBox(height: 8),
 
                 // Pilote 3
                 const Text('Pil3'),
-                SizedBox(
-                  height: 60,
-                  child: CupertinoPicker(
-                    looping: true,
-                    itemExtent: 24,
-                    scrollController: FixedExtentScrollController(initialItem: pilotes23.indexOf(p3)),
-                    onSelectedItemChanged: (i) => setSt(() => p3 = pilotes23[i]),
-                    children: pilotes23.map((p) => Center(child: Text(p))).toList(),
-                  ),
+                CupertinoPicker(
+                  itemExtent: 24,
+                  scrollController: FixedExtentScrollController(initialItem: pilotes23.indexOf(p3)),
+                  onSelectedItemChanged: (i) => setSt(() => p3 = pilotes23[i]),
+                  children: pilotes23.map((p) => Center(child: Text(p))).toList(),
                 ),
                 const SizedBox(height: 8),
 
@@ -242,15 +195,11 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
             ElevatedButton(
               onPressed: () async {
                 final parts = chosenTime.split(':');
-                final dt = DateTime(
-                  chosenDate.year,
-                  chosenDate.month,
-                  chosenDate.day,
-                  int.parse(parts[0]),
-                  int.parse(parts[1]),
-                );
+                final dt = DateTime(chosenDate.year, chosenDate.month, chosenDate.day, int.parse(parts[0]), int.parse(parts[1]));
+
                 if (mission == null) {
-                  await widget.dao.insertMission(MissionsCompanion.insert(
+                  // ➕ Création locale
+                  final comp = MissionsCompanion.insert(
                     date: dt,
                     vecteur: chosenVect,
                     pilote1: p1,
@@ -258,19 +207,37 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
                     pilote3: Value(p3),
                     destinationCode: chosenDest,
                     description: Value(remarkCtrl.text.trim()),
-                  ));
+                  );
+                  await widget.dao.upsertMission(comp);
                 } else {
-                  await widget.dao.updateMission(mission.copyWith(
-                    date: dt,
-                    vecteur: chosenVect,
-                    pilote1: p1,
-                    pilote2: Value(p2),
-                    pilote3: Value(p3),
-                    destinationCode: chosenDest,
-                    description: Value(remarkCtrl.text.trim()),
-                  ));
+                  // ✏️ Modification locale (on conserve id/remoteId, etc.)
+                  await widget.dao.upsertMission(
+                    mission.copyWith(
+                      date: dt,
+                      vecteur: chosenVect,
+                      pilote1: p1,
+                      pilote2: Value(p2),
+                      pilote3: Value(p3),
+                      destinationCode: chosenDest,
+                      description: Value(remarkCtrl.text.trim()),
+                    ).toCompanion(true),
+                  );
                 }
-                Navigator.of(ctx2).pop();
+
+                // 🔄 Push auto après création/modif (exactement comme MissionsList avion)
+                await widget.dao.syncPendingMissions();
+
+                if (mounted) {
+                  Navigator.of(ctx2).pop();
+                  setState(() {}); // recharge liste locale
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(mission == null
+                          ? "✅ Mission hélico créée et synchronisée"
+                          : "✅ Mission hélico modifiée et synchronisée"),
+                    ),
+                  );
+                }
               },
               child: Text(mission == null ? 'Valider' : 'Modifier'),
             ),
@@ -279,7 +246,6 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
       ),
     );
 
-    // après fermeture, recharger la liste
     _refreshData();
     setState(() {});
   }
@@ -287,17 +253,32 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Missions Hebdo (Hélico)')),
+      appBar: AppBar(
+        title: const Text('Missions Hebdo (Hélico)'),
+        actions: [
+          // 🔄 Bouton de synchronisation manuelle (même logique que MissionsList avion)
+          IconButton(
+            icon: const Icon(Icons.sync),
+            tooltip: "Synchroniser maintenant",
+            onPressed: () async {
+              await widget.dao.syncPendingMissions();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("🔄 Synchronisation manuelle effectuée")),
+                );
+              }
+              _refreshData();
+              setState(() {});
+            },
+          ),
+        ],
+      ),
       body: FutureBuilder<_MissionsData>(
         future: _dataFuture,
         builder: (ctx, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           final data = snap.data!;
-          if (data.missions.isEmpty) {
-            return const Center(child: Text('Aucune mission hélico'));
-          }
+          if (data.missions.isEmpty) return const Center(child: Text('Aucune mission hélico'));
           return ListView.builder(
             itemCount: data.missions.length,
             itemBuilder: (_, i) {
@@ -305,13 +286,13 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
               return GestureDetector(
                 onLongPress: data.isChef ? () => _showMissionDialog(mission: m) : null,
                 child: ListTile(
-                  title: Text(
-                    '${m.date.day.toString().padLeft(2, '0')}/${m.date.month.toString().padLeft(2, '0')}  ${m.vecteur}',
+                  leading: Icon(
+                    m.isSynced ? Icons.check_circle : Icons.sync_problem,
+                    color: m.isSynced ? Colors.green : Colors.orange,
                   ),
+                  title: Text('${DateFormat('dd/MM').format(m.date)}  ${m.vecteur}'),
                   subtitle: Text(
-                    '${DateFormat('HH:mm').format(m.date)} • '
-                        '${m.pilote1}/${m.pilote2}/${m.pilote3} → '
-                        '${m.destinationCode}'
+                    '${DateFormat('HH:mm').format(m.date)} • ${m.pilote1}/${m.pilote2}/${m.pilote3} → ${m.destinationCode}'
                         '${m.description != null ? ' – ${m.description}' : ''}',
                   ),
                 ),
@@ -323,9 +304,9 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
       floatingActionButton: FutureBuilder<_MissionsData>(
         future: _dataFuture,
         builder: (ctx, snap) {
-          final show = snap.connectionState == ConnectionState.done && (snap.data?.isChef ?? false);
-          debugPrint('DEBUG MissionsHelico.FAB: state=${snap.connectionState}, isChef=${snap.data?.isChef}');
-          if (!show) return const SizedBox.shrink();
+          if (snap.connectionState != ConnectionState.done || !(snap.data?.isChef ?? false)) {
+            return const SizedBox.shrink();
+          }
           return FloatingActionButton(
             onPressed: () => _showMissionDialog(),
             child: const Icon(Icons.add),

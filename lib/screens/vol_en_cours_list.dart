@@ -49,7 +49,7 @@ class _VolEnCoursListState extends State<VolEnCoursList> {
   Future<void> _markDeparture(Mission m) async {
     debugPrint('DEBUG VolEnCours: mark DEP id=${m.id}');
     // soit juste: await widget.dao.setActualDeparture(m.id);
-    await widget.dao.setActualDeparture(m.id,);
+    await widget.dao.setActualDeparture(m.id,); //The method 'setActualDeparture' isn't defined for the type 'MissionDao'.
     _loadMissions();
     setState(() {});
   }
@@ -57,7 +57,7 @@ class _VolEnCoursListState extends State<VolEnCoursList> {
   Future<void> _markArrival(Mission m) async {
     debugPrint('DEBUG VolEnCours: mark ARR id=${m.id}');
     // soit juste: await widget.dao.setActualArrival(m.id);
-    await widget.dao.setActualArrival(m.id, );
+    await widget.dao.setActualArrival(m.id, ); //The method 'setActualArrival' isn't defined for the type 'MissionDao'.
     _loadMissions();
     setState(() {});
   }

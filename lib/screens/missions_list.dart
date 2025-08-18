@@ -1,13 +1,12 @@
+// lib/screens/missions_list.dart
 import 'package:drift/drift.dart' hide Column;
-import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/app_database.dart';
 import '../data/mission_dao.dart';
-import '../data/destinations.dart';
 
-/// Contient la liste + droit d’édition
 class _MissionsData {
   final List<Mission> missions;
   final bool isChef;
@@ -15,7 +14,6 @@ class _MissionsData {
 }
 
 /// Écran des missions hebdo (AVION).
-/// `canEdit` est fourni par HomeScreen (fiable) — on ne lit plus la fonction depuis les prefs ici.
 class MissionsList extends StatefulWidget {
   final MissionDao dao;
   final bool canEdit;
@@ -45,48 +43,48 @@ class _MissionsListState extends State<MissionsList> {
 
   Future<_MissionsData> _loadData() async {
     final all = await widget.dao.getAllMissions();
-    // Avion uniquement
-    final filtered = all
-        .where((m) => m.vecteur == 'ATR72')
-        .toList()
+
+    // On ne garde que les missions avion (ATR72)
+    final filtered = all.where((m) => m.vecteur == 'ATR72').toList()
       ..sort((a, b) => a.date.compareTo(b.date));
 
     final data = _MissionsData(missions: filtered, isChef: widget.canEdit);
-    debugPrint('DEBUG MissionsList._loadData: isChef=${data.isChef}, count=${data.missions.length}');
+    debugPrint(
+        'DEBUG MissionsAvion._loadData: isChef=${data.isChef}, count=${data.missions.length}');
     return data;
   }
 
-  /// Dialogue d’ajout / édition
   Future<void> _showMissionDialog({Mission? mission}) async {
-    // Destinations avion: liste `destinations` déjà existante
-    final users = await widget.dao.attachedDatabase.select(widget.dao.attachedDatabase.users).get();
-    final pilotes = users
-        .where((u) => u.role.toLowerCase() == 'pilote' && u.group.toLowerCase() == 'avion')
-        .map((u) => u.trigramme)
-        .toList();
+    final allUsers = await widget.dao.attachedDatabase.users.select().get();
 
-    const defaultVecteur = 'ATR72';
+    // Liste des pilotes avion
+    final pilotes = ['--'] +
+        allUsers
+            .where((u) =>
+        u.role.toLowerCase() == 'pilote' &&
+            u.group.toLowerCase() == 'avion')
+            .map((u) => u.trigramme)
+            .toList();
 
     // borne à aujourd’hui
     final now = DateTime.now();
     final minDate = DateTime(now.year, now.month, now.day);
-
-    // valeurs initiales
     DateTime chosenDate = mission?.date ?? minDate;
     if (chosenDate.isBefore(minDate)) chosenDate = minDate;
 
-    String chosenDest = mission?.destinationCode
-        ?? (destinations.contains('FOON') ? 'FOON' : destinations.first);
+    // Destination & heure
+    final destinations = ['--', 'FOOL', 'FOON', 'FOOG', 'FOGR', 'FOGO'];
+    String chosenDest = mission?.destinationCode ?? destinations.first;
+    String chosenTime =
+    mission != null ? DateFormat('HH:mm').format(mission.date) : '08:30';
 
-    String chosenTime = mission != null
-        ? DateFormat('HH:mm').format(mission.date)
-        : '08:30';
+    // Pilotes initiaux
+    String chosenP1 = mission?.pilote1 ?? pilotes.first;
+    String chosenP2 = mission?.pilote2 ?? pilotes.first;
 
-    String chosenP1 = mission?.pilote1 ?? (pilotes.isNotEmpty ? pilotes.first : '');
-    String chosenP2 = mission?.pilote2 ?? (pilotes.length > 1 ? pilotes[1] : chosenP1);
-    final remarkCtrl = TextEditingController(text: mission?.description ?? '');
+    final remarkCtrl = TextEditingController(text: mission?.description);
 
-    // heures par pas de 30 min
+    // Heures par pas de 30 mn
     final times = List.generate(48, (i) {
       final h = i ~/ 2;
       final m = (i % 2) * 30;
@@ -95,154 +93,180 @@ class _MissionsListState extends State<MissionsList> {
 
     await showDialog(
       context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx2, setStateInner) {
-            return AlertDialog(
-              title: Text(mission == null ? 'Ajouter mission' : 'Modifier mission'),
-              content: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setStateInner) => AlertDialog(
+          title: Text(mission == null
+              ? 'Ajouter mission avion'
+              : 'Modifier mission avion'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Date avec flèches
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Date
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.chevron_left),
-                          onPressed: chosenDate.isAfter(minDate)
-                              ? () => setStateInner(() => chosenDate = chosenDate.subtract(const Duration(days: 1)))
-                              : null,
-                        ),
-                        Text(DateFormat('dd/MM/yyyy').format(chosenDate)),
-                        IconButton(
-                          icon: const Icon(Icons.chevron_right),
-                          onPressed: () => setStateInner(() => chosenDate = chosenDate.add(const Duration(days: 1))),
-                        ),
-                      ],
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: chosenDate.isAfter(minDate)
+                          ? () => setStateInner(() => chosenDate =
+                          chosenDate.subtract(const Duration(days: 1)))
+                          : null,
                     ),
-                    const SizedBox(height: 8),
-
-                    // Destination
-                    const Text('Destination'),
-                    SizedBox(
-                      height: 80,
-                      child: CupertinoPicker(
-                        looping: true,
-                        itemExtent: 32,
-                        scrollController: FixedExtentScrollController(
-                          initialItem: destinations.indexOf(chosenDest),
-                        ),
-                        onSelectedItemChanged: (i) => setStateInner(() => chosenDest = destinations[i]),
-                        children: destinations.map((d) => Center(child: Text(d))).toList(),
-                      ),
+                    Text(DateFormat('dd/MM/yyyy').format(chosenDate)),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () =>
+                          setStateInner(() => chosenDate = chosenDate.add(
+                            const Duration(days: 1),
+                          )),
                     ),
-                    const SizedBox(height: 8),
-
-                    // Heure
-                    const Text('Heure de décollage'),
-                    SizedBox(
-                      height: 80,
-                      child: CupertinoPicker(
-                        looping: true,
-                        itemExtent: 32,
-                        scrollController: FixedExtentScrollController(
-                          initialItem: times.indexOf(chosenTime),
-                        ),
-                        onSelectedItemChanged: (i) => setStateInner(() => chosenTime = times[i]),
-                        children: times.map((t) => Center(child: Text(t))).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Pilotes
-                    const Text('Pilote 1'),
-                    SizedBox(
-                      height: 80,
-                      child: CupertinoPicker(
-                        looping: true,
-                        itemExtent: 32,
-                        scrollController: FixedExtentScrollController(
-                          initialItem: pilotes.indexOf(chosenP1),
-                        ),
-                        onSelectedItemChanged: (i) => setStateInner(() => chosenP1 = pilotes[i]),
-                        children: pilotes.map((p) => Center(child: Text(p))).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    const Text('Pilote 2'),
-                    SizedBox(
-                      height: 80,
-                      child: CupertinoPicker(
-                        looping: true,
-                        itemExtent: 32,
-                        scrollController: FixedExtentScrollController(
-                          initialItem: pilotes.indexOf(chosenP2),
-                        ),
-                        onSelectedItemChanged: (i) => setStateInner(() => chosenP2 = pilotes[i]),
-                        children: pilotes.map((p) => Center(child: Text(p))).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Remarque
-                    const Text('Remarque'),
-                    TextField(controller: remarkCtrl),
                   ],
                 ),
-              ),
-              actions: [
-                if (mission != null)
-                  TextButton(
-                    onPressed: () async {
-                      await widget.dao.deleteMission(mission.id);
-                      Navigator.of(ctx2).pop();
-                    },
-                    child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
+                const SizedBox(height: 8),
+
+                // Destination
+                const Text('Destination'),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: destinations.indexOf(chosenDest),
+                    ),
+                    onSelectedItemChanged: (i) =>
+                        setStateInner(() => chosenDest = destinations[i]),
+                    children:
+                    destinations.map((d) => Center(child: Text(d))).toList(),
                   ),
-                TextButton(onPressed: () => Navigator.of(ctx2).pop(), child: const Text('Annuler')),
-                ElevatedButton(
-                  onPressed: () async {
-                    final parts = chosenTime.split(':');
-                    final dt = DateTime(
-                      chosenDate.year,
-                      chosenDate.month,
-                      chosenDate.day,
-                      int.parse(parts[0]),
-                      int.parse(parts[1]),
-                    );
-                    if (mission == null) {
-                      await widget.dao.insertMission(MissionsCompanion.insert(
-                        date: dt,
-                        vecteur: defaultVecteur,
-                        pilote1: chosenP1,
-                        pilote2: Value(chosenP2),
-                        destinationCode: chosenDest,
-                        description: Value(remarkCtrl.text.trim()),
-                      ));
-                    } else {
-                      await widget.dao.updateMission(mission.copyWith(
-                        date: dt,
-                        vecteur: defaultVecteur,
-                        pilote1: chosenP1,
-                        pilote2: Value(chosenP2),
-                        destinationCode: chosenDest,
-                        description: Value(remarkCtrl.text.trim()),
-                      ));
-                    }
-                    Navigator.of(ctx2).pop();
-                  },
-                  child: Text(mission == null ? 'Valider' : 'Modifier'),
                 ),
+                const SizedBox(height: 8),
+
+                // Heure
+                const Text('Heure de décollage'),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: times.indexOf(chosenTime),
+                    ),
+                    onSelectedItemChanged: (i) =>
+                        setStateInner(() => chosenTime = times[i]),
+                    children: times.map((t) => Center(child: Text(t))).toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Pilote 1
+                const Text('Pilote 1'),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: pilotes.indexOf(chosenP1),
+                    ),
+                    onSelectedItemChanged: (i) =>
+                        setStateInner(() => chosenP1 = pilotes[i]),
+                    children: pilotes.map((p) => Center(child: Text(p))).toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Pilote 2
+                const Text('Pilote 2'),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: pilotes.indexOf(chosenP2),
+                    ),
+                    onSelectedItemChanged: (i) =>
+                        setStateInner(() => chosenP2 = pilotes[i]),
+                    children: pilotes.map((p) => Center(child: Text(p))).toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Remarque
+                const Text('Remarque'),
+                TextField(controller: remarkCtrl),
               ],
-            );
-          },
-        );
-      },
+            ),
+          ),
+          actions: [
+            if (mission != null)
+              TextButton(
+                onPressed: () async {
+                  await widget.dao.deleteMission(mission.id);
+                  Navigator.of(ctx2).pop();
+                },
+                child: const Text('Supprimer',
+                    style: TextStyle(color: Colors.red)),
+              ),
+            TextButton(
+                onPressed: () => Navigator.of(ctx2).pop(),
+                child: const Text('Annuler')),
+            ElevatedButton(
+              onPressed: () async {
+                final parts = chosenTime.split(':');
+                final dt = DateTime(
+                  chosenDate.year,
+                  chosenDate.month,
+                  chosenDate.day,
+                  int.parse(parts[0]),
+                  int.parse(parts[1]),
+                );
+
+                if (mission == null) {
+                  // ➕ Création locale
+                  await widget.dao.upsertMission(MissionsCompanion.insert(
+                    date: dt,
+                    vecteur: 'ATR72',
+                    pilote1: chosenP1,
+                    pilote2: Value(chosenP2),
+                    destinationCode: chosenDest,
+                    description: Value(remarkCtrl.text.trim()),
+                  ));
+                } else {
+                  // ✏️ Modification
+                  await widget.dao.upsertMission(mission.copyWith(
+                    date: dt,
+                    pilote1: chosenP1,
+                    pilote2: Value(chosenP2),
+                    destinationCode: chosenDest,
+                    description: Value(remarkCtrl.text.trim()),
+                  ).toCompanion(true));
+                }
+
+                // 🔄 Push auto après création/modif
+                await widget.dao.syncPendingMissions();
+
+                if (mounted) {
+                  Navigator.of(ctx2).pop();
+                  setState(() {}); // recharge la liste
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(mission == null
+                          ? "✅ Mission créée et synchronisée"
+                          : "✅ Mission modifiée et synchronisée"),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Valider'),
+            ),
+          ],
+        ),
+      ),
     );
 
-    // après fermeture, recharger la liste
     _refreshData();
     setState(() {});
   }
@@ -250,10 +274,29 @@ class _MissionsListState extends State<MissionsList> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Missions Hebdo (Avion)')),
+      appBar: AppBar(
+        title: const Text('Missions Hebdo (Avion)'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sync),
+            tooltip: "Synchroniser maintenant",
+            onPressed: () async {
+              await widget.dao.syncPendingMissions();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text("🔄 Synchronisation manuelle effectuée")),
+                );
+              }
+              _refreshData();
+              setState(() {});
+            },
+          ),
+        ],
+      ),
       body: FutureBuilder<_MissionsData>(
         future: _dataFuture,
-        builder: (context, snap) {
+        builder: (ctx, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -265,17 +308,22 @@ class _MissionsListState extends State<MissionsList> {
             itemCount: data.missions.length,
             itemBuilder: (_, i) {
               final m = data.missions[i];
-              return GestureDetector(
-                onLongPress: data.isChef ? () => _showMissionDialog(mission: m) : null,
-                child: ListTile(
-                  title: Text(DateFormat('dd/MM').format(m.date)),
-                  subtitle: Text(
-                    '${DateFormat('HH:mm').format(m.date)} • '
-                        '${m.pilote1}${m.pilote2 != null ? '/${m.pilote2}' : ''} → '
-                        '${m.destinationCode}'
-                        '${m.description != null ? ' – ${m.description}' : ''}',
-                  ),
+              return ListTile(
+                leading: Icon(
+                  m.isSynced ? Icons.check_circle : Icons.sync_problem,
+                  color: m.isSynced ? Colors.green : Colors.orange,
                 ),
+                title: Text(
+                  '${m.date.day.toString().padLeft(2, '0')}/${m.date.month.toString().padLeft(2, '0')}  ${m.vecteur}',
+                ),
+                subtitle: Text(
+                  '${DateFormat('HH:mm').format(m.date)} • '
+                      '${m.pilote1}/${m.pilote2} → ${m.destinationCode}'
+                      '${m.description != null ? ' – ${m.description}' : ''}',
+                ),
+                onLongPress: data.isChef
+                    ? () => _showMissionDialog(mission: m)
+                    : null,
               );
             },
           );
@@ -283,10 +331,9 @@ class _MissionsListState extends State<MissionsList> {
       ),
       floatingActionButton: FutureBuilder<_MissionsData>(
         future: _dataFuture,
-        builder: (context, snap) {
-          // On se base sur le canEdit passé par Home (à l’intérieur du snapshot)
-          final show = snap.connectionState == ConnectionState.done && (snap.data?.isChef ?? false);
-          debugPrint('DEBUG MissionsList.FAB: state=${snap.connectionState}, isChef=${snap.data?.isChef}');
+        builder: (ctx, snap) {
+          final show = snap.connectionState == ConnectionState.done &&
+              (snap.data?.isChef ?? false);
           if (!show) return const SizedBox.shrink();
           return FloatingActionButton(
             onPressed: () => _showMissionDialog(),

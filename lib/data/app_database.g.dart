@@ -509,6 +509,22 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
   late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
       'updated_at', aliasedName, true,
       type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _isSyncedMeta =
+      const VerificationMeta('isSynced');
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+      'is_synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_synced" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _hourStartMeta =
+      const VerificationMeta('hourStart');
+  @override
+  late final GeneratedColumn<String> hourStart = GeneratedColumn<String>(
+      'hour_start', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -523,7 +539,9 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
         actualArrival,
         remoteId,
         createdAt,
-        updatedAt
+        updatedAt,
+        isSynced,
+        hourStart
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -602,6 +620,14 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
     }
+    if (data.containsKey('is_synced')) {
+      context.handle(_isSyncedMeta,
+          isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta));
+    }
+    if (data.containsKey('hour_start')) {
+      context.handle(_hourStartMeta,
+          hourStart.isAcceptableOrUnknown(data['hour_start']!, _hourStartMeta));
+    }
     return context;
   }
 
@@ -637,6 +663,10 @@ class $MissionsTable extends Missions with TableInfo<$MissionsTable, Mission> {
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at']),
+      isSynced: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_synced'])!,
+      hourStart: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}hour_start']),
     );
   }
 
@@ -660,6 +690,10 @@ class Mission extends DataClass implements Insertable<Mission> {
   final String? remoteId;
   final DateTime createdAt;
   final DateTime? updatedAt;
+
+  /// Nouveau champ: synchro Firestore
+  final bool isSynced;
+  final String? hourStart;
   const Mission(
       {required this.id,
       required this.date,
@@ -673,7 +707,9 @@ class Mission extends DataClass implements Insertable<Mission> {
       this.actualArrival,
       this.remoteId,
       required this.createdAt,
-      this.updatedAt});
+      this.updatedAt,
+      required this.isSynced,
+      this.hourStart});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -703,6 +739,10 @@ class Mission extends DataClass implements Insertable<Mission> {
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || updatedAt != null) {
       map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    map['is_synced'] = Variable<bool>(isSynced);
+    if (!nullToAbsent || hourStart != null) {
+      map['hour_start'] = Variable<String>(hourStart);
     }
     return map;
   }
@@ -736,6 +776,10 @@ class Mission extends DataClass implements Insertable<Mission> {
       updatedAt: updatedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(updatedAt),
+      isSynced: Value(isSynced),
+      hourStart: hourStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(hourStart),
     );
   }
 
@@ -756,6 +800,8 @@ class Mission extends DataClass implements Insertable<Mission> {
       remoteId: serializer.fromJson<String?>(json['remoteId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
+      hourStart: serializer.fromJson<String?>(json['hourStart']),
     );
   }
   @override
@@ -775,6 +821,8 @@ class Mission extends DataClass implements Insertable<Mission> {
       'remoteId': serializer.toJson<String?>(remoteId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
+      'hourStart': serializer.toJson<String?>(hourStart),
     };
   }
 
@@ -791,7 +839,9 @@ class Mission extends DataClass implements Insertable<Mission> {
           Value<DateTime?> actualArrival = const Value.absent(),
           Value<String?> remoteId = const Value.absent(),
           DateTime? createdAt,
-          Value<DateTime?> updatedAt = const Value.absent()}) =>
+          Value<DateTime?> updatedAt = const Value.absent(),
+          bool? isSynced,
+          Value<String?> hourStart = const Value.absent()}) =>
       Mission(
         id: id ?? this.id,
         date: date ?? this.date,
@@ -809,6 +859,8 @@ class Mission extends DataClass implements Insertable<Mission> {
         remoteId: remoteId.present ? remoteId.value : this.remoteId,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+        isSynced: isSynced ?? this.isSynced,
+        hourStart: hourStart.present ? hourStart.value : this.hourStart,
       );
   @override
   String toString() {
@@ -825,7 +877,9 @@ class Mission extends DataClass implements Insertable<Mission> {
           ..write('actualArrival: $actualArrival, ')
           ..write('remoteId: $remoteId, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('hourStart: $hourStart')
           ..write(')'))
         .toString();
   }
@@ -844,7 +898,9 @@ class Mission extends DataClass implements Insertable<Mission> {
       actualArrival,
       remoteId,
       createdAt,
-      updatedAt);
+      updatedAt,
+      isSynced,
+      hourStart);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -861,7 +917,9 @@ class Mission extends DataClass implements Insertable<Mission> {
           other.actualArrival == this.actualArrival &&
           other.remoteId == this.remoteId &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.isSynced == this.isSynced &&
+          other.hourStart == this.hourStart);
 }
 
 class MissionsCompanion extends UpdateCompanion<Mission> {
@@ -878,6 +936,8 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
   final Value<String?> remoteId;
   final Value<DateTime> createdAt;
   final Value<DateTime?> updatedAt;
+  final Value<bool> isSynced;
+  final Value<String?> hourStart;
   const MissionsCompanion({
     this.id = const Value.absent(),
     this.date = const Value.absent(),
@@ -892,6 +952,8 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     this.remoteId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.hourStart = const Value.absent(),
   });
   MissionsCompanion.insert({
     this.id = const Value.absent(),
@@ -907,6 +969,8 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     this.remoteId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.hourStart = const Value.absent(),
   })  : date = Value(date),
         vecteur = Value(vecteur),
         pilote1 = Value(pilote1),
@@ -925,6 +989,8 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     Expression<String>? remoteId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<bool>? isSynced,
+    Expression<String>? hourStart,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -940,6 +1006,8 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
       if (remoteId != null) 'remote_id': remoteId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (isSynced != null) 'is_synced': isSynced,
+      if (hourStart != null) 'hour_start': hourStart,
     });
   }
 
@@ -956,7 +1024,9 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
       Value<DateTime?>? actualArrival,
       Value<String?>? remoteId,
       Value<DateTime>? createdAt,
-      Value<DateTime?>? updatedAt}) {
+      Value<DateTime?>? updatedAt,
+      Value<bool>? isSynced,
+      Value<String?>? hourStart}) {
     return MissionsCompanion(
       id: id ?? this.id,
       date: date ?? this.date,
@@ -971,6 +1041,8 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
       remoteId: remoteId ?? this.remoteId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isSynced: isSynced ?? this.isSynced,
+      hourStart: hourStart ?? this.hourStart,
     );
   }
 
@@ -1016,6 +1088,12 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
+    if (hourStart.present) {
+      map['hour_start'] = Variable<String>(hourStart.value);
+    }
     return map;
   }
 
@@ -1034,7 +1112,9 @@ class MissionsCompanion extends UpdateCompanion<Mission> {
           ..write('actualArrival: $actualArrival, ')
           ..write('remoteId: $remoteId, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('hourStart: $hourStart')
           ..write(')'))
         .toString();
   }
@@ -2516,6 +2596,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PlanningEventsTable planningEvents = $PlanningEventsTable(this);
   late final $NotificationsTable notifications = $NotificationsTable(this);
   late final $AirportsTable airports = $AirportsTable(this);
+  late final MissionDao missionDao = MissionDao(this as AppDatabase);
   late final PlanningDao planningDao = PlanningDao(this as AppDatabase);
   late final ChefMessageDao chefMessageDao =
       ChefMessageDao(this as AppDatabase);
