@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/app_database.dart';
 import '../data/mission_dao.dart';
 import '../data/chef_message_dao.dart';
+import '../widgets/chef_message_banner.dart';
+
 
 /// Dashboard montrant les 5 prochaines missions (avion + hélico) et le dernier message du chef
 class HomeDashboard extends StatefulWidget {
@@ -93,43 +95,7 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
       body: Column(
         children: [
           // Dernier message du chef avec possibilité de dismiss
-          FutureBuilder<ChefMessage?>(
-            future: _initFuture,
-            builder: (ctx, snap) {
-              if (snap.connectionState != ConnectionState.done) {
-                return const SizedBox();
-              }
-              final msg = snap.data;
-              if (msg == null || _dismissed.contains(msg.id)) {
-                return const SizedBox();
-              }
-              return Dismissible(
-                key: ValueKey(msg.id),
-                direction: DismissDirection.endToStart,
-                onDismissed: (_) async {
-                  setState(() => _dismissed.add(msg.id));
-                  await _saveDismissed();
-                },
-                background: Container(
-                  color: Colors.red,
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: const Icon(Icons.delete, color: Colors.white),
-                ),
-                child: Card(
-                  margin: const EdgeInsets.all(8),
-                  child: ListTile(
-                    leading: const Icon(Icons.message),
-                    title: Text(msg.content ?? ''),
-                    subtitle: Text(
-                      '${msg.authorRole} • ${msg.group} • ${msg.timestamp.toLocal().toIso8601String().replaceFirst('T', ' ')}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
+          const ChefMessageBanner(),
           // Missions à venir
           Expanded(
             child: StreamBuilder<List<Mission>>(

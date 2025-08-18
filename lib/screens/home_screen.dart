@@ -1,4 +1,5 @@
 // lib/screens/home_screen.dart
+import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart' hide Notification;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -243,12 +244,24 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.logout),
               title: const Text('Se déconnecter'),
               onTap: () async {
+                // Désactive les taps ici si besoin (setState _loggingOut = true)
+                final auth = fbAuth.FirebaseAuth.instance;
                 final prefs = await SharedPreferences.getInstance();
-                await prefs.clear();
+
+                try {
+                  await auth.signOut(); // <-- IMPORTANT: attendre la fin
+                } finally {
+                  await prefs.remove('userEmail');
+                  await prefs.remove('userTrigram');
+                  await prefs.remove('userGroup');
+                  await prefs.remove('userFonction');
+                  await prefs.remove('isAdmin');
+                }
+
                 if (!mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => AuthScreen(db: widget.db)),
-                      (route) => false,
+                      (_) => false,
                 );
               },
             ),
