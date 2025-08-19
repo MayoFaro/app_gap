@@ -9,8 +9,8 @@ import 'home_screen.dart';
 
 /// Inscription :
 /// 1) crée le compte FirebaseAuth
-/// 2) retrouve le profil local (table Users issue de users.json)
-/// 3) crée /users/{uid} dans Firestore (fonction, group, trigramme, role, email)
+/// 2) retrouve le profil existant dans la collection `users` (via email)
+/// 3) crée /users/{uid} dans Firestore (copie du profil existant)
 /// 4) stocke le contexte utilisateur en SharedPreferences
 /// 5) navigue vers HomeScreen
 class RegisterScreen extends StatefulWidget {
@@ -63,41 +63,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
       debugPrint('REGISTER: FirebaseAuth OK, uid=${fbUser.uid}');
 
-      // 2) Lookup profil local (insensible à la casse)
-      final all = await widget.db.select(widget.db.users).get();
-      final lowerEmail = email.toLowerCase();
-      final row = all.firstWhere(
-            (u) => (u.email ?? '').toLowerCase() == lowerEmail,
-        orElse: () => throw Exception('Aucun profil utilisateur associé à cet email.'),
-      );
-      debugPrint('REGISTER: local profile found -> '
-          'tri=${row.trigramme}, group=${row.group}, role=${row.role}, fonction=${row.fonction}, isAdmin=${row.isAdmin}');
+      // 2) Lookup profil existant dans Firestore (via email)
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
 
-      // 3) Écrit /users/{uid} sur Firestore (requis par tes rules)
+      if (query.docs.isEmpty) {
+        throw Exception("Aucun profil pré-enregistré trouvé pour cet email. Contactez l'administrateur.");
+      }
+
+      final existingProfile = query.docs.first.data();
+      debugPrint('REGISTER: existing Firestore profile found -> $existingProfile');
+
+      // 3) Écrit /users/{uid} sur Firestore (copie du profil existant)
       await FirebaseFirestore.instance.collection('users').doc(fbUser.uid).set({
-        'trigramme': row.trigramme,
-        'fonction': row.fonction, // "chef" | "cdt" | ...
-        'role': row.role,         // "pilote" | "mecano"
-        'group': row.group,       // "avion" | "helico"
-        'email': email,
+        ...existingProfile,
+        'email': email, // on force l’email pour cohérence
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      debugPrint('REGISTER: Firestore /users/${fbUser.uid} created');
+      debugPrint('REGISTER: Firestore /users/${fbUser.uid} created from existing profile');
 
       // 4) SharedPreferences (clés attendues ailleurs dans l’app)
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('userUid', fbUser.uid);
-      await prefs.setString('userTrigram', row.trigramme);
-      await prefs.setString('userGroup', row.group);
-      await prefs.setString('fonction', row.fonction);      // <- utilisé par Missions*
-      await prefs.setString('role', row.role);
-      await prefs.setBool('isAdmin', row.isAdmin);
-      // (par sécurité si du code lit encore cette clé)
-      await prefs.setString('userFunction', row.fonction);
+      await prefs.setString('userTrigram', (existingProfile['trigramme'] ?? '---').toString());
+      await prefs.setString('userGroup', (existingProfile['group'] ?? '---').toString());
+      await prefs.setString('userFunction', (existingProfile['fonction'] ?? '---').toString());
+      await prefs.setString('userRole', (existingProfile['role'] ?? '').toString());
+      await prefs.setBool('isAdmin', (existingProfile['isAdmin'] == true));
 
       debugPrint('REGISTER: prefs saved -> '
-          'trig=${row.trigramme}, group=${row.group}, fonction=${row.fonction}, role=${row.role}, isAdmin=${row.isAdmin}');
+          'trig=${prefs.getString('userTrigram')}, '
+          'group=${prefs.getString('userGroup')}, '
+          'fonction=${prefs.getString('userFunction')}, '
+          'role=${prefs.getString('userRole')}, '
+          'isAdmin=${prefs.getBool('isAdmin')}');
 
+      // 5) Navigation vers Home
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => HomeScreen(db: widget.db)),
@@ -119,7 +124,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           msg = e.message ?? 'Erreur FirebaseAuth.';
       }
       debugPrint('REGISTER: FirebaseAuthException -> ${e.code} / ${e.message}');
-      // si on a créé un user FB mais problème ensuite (profil introuvable...), on le supprime
+      // si on a créé un user FB mais problème ensuite, on le supprime
       if (fbUser != null) {
         try {
           await fbUser.delete();

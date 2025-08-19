@@ -127,7 +127,7 @@ class _ToursDeGardeScreenState extends State<ToursDeGardeScreen> {
       final uid = triToUid[t];
       final map = (uid != null) ? uidToData[uid] : null;
       final fonction = (map == null) ? null : map['fonction'] as String?;
-      return fonction != 'CDT';
+      return fonction != 'cdt';
     }).toList();
 
     // 4) Tri : ancien en premier, tie-break TWR par rang

@@ -10,7 +10,6 @@ import 'home_screen.dart';
 
 /// Écran d'authentification avec "auto-provisioning" du profil Firestore.
 /// - Au login, on s'assure qu'un doc /users/{uid} existe.
-/// - Si le JSON local (Drift.Users) a été modifié, on merge les changements côté Firestore.
 /// - On stocke ensuite le profil en SharedPreferences.
 class AuthScreen extends StatefulWidget {
   final AppDatabase db;
@@ -36,99 +35,34 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   // ----------------------------------------------------------------------------
-  // Helper: garantit l’existence d’un /users/{uid}, le crée depuis la table
-  // locale (users.json importé) si nécessaire, et merge si le local a changé.
-  // Renvoie le "profil final" utilisé pour la session.
+  // Helper: garantit l’existence d’un /users/{uid}.
+  // Si inexistant → on initialise avec email et timestamps.
+  // Sinon → on renvoie tel quel.
   // ----------------------------------------------------------------------------
   Future<Map<String, dynamic>> _ensureUserDocument({
     required fbAuth.User fbUser,
     required String email,
   }) async {
-    final usersColl = FirebaseFirestore.instance.collection('users');
-    final userRef = usersColl.doc(fbUser.uid);
+    final userRef = FirebaseFirestore.instance.collection('users').doc(fbUser.uid);
+    final snap = await userRef.get();
 
-    // 1) Cherche profil "local" (table Drift.Users) par email
-    final localRow = await (widget.db.select(widget.db.users)
-      ..where((u) => u.email.equals(email)))
-        .getSingleOrNull();
-
-    debugPrint('DEBUG Auth.ensureUserDoc: localRow=$localRow');
-
-    // 2) Lit le doc Firestore
-    final remoteSnap = await userRef.get();
-    Map<String, dynamic>? remote = remoteSnap.data();
-
-    // 3) Si le doc Firestore n'existe pas, on tente de le créer depuis le local
-    if (!remoteSnap.exists) {
-      if (localRow == null) {
-        // Aucun local et aucun remote: on ne sait pas provisionner ce compte
-        throw Exception(
-          "Profil introuvable: aucun mapping local pour l'email et aucun doc Firestore /users/${fbUser.uid}.",
-        );
-      }
-
-      final toCreate = <String, dynamic>{
-        'trigramme': localRow.trigramme,
-        'fonction': localRow.fonction, // 'chef', 'cdt', etc.
-        'role': localRow.role,         // 'pilote' | 'mecano'
-        'group': localRow.group,       // 'avion' | 'helico'
-        'email': email,
-        'isAdmin': localRow.isAdmin,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      await userRef.set(toCreate, SetOptions(merge: true));
-      debugPrint('DEBUG Auth.ensureUserDoc: created /users/${fbUser.uid} from local JSON');
-
-      return {
-        ...toCreate,
-        // createdAt/updatedAt seront des Timestamps côté serveur; on n’en a pas besoin ici
-      };
+    if (!snap.exists) {
+      // Ici, on NE crée plus de fallback.
+      throw Exception("Profil utilisateur inexistant pour uid=${fbUser.uid}. "
+          "L'inscription n'a pas correctement provisionné le compte.");
     }
 
-    // 4) Le doc existe: on peut
-    //    - l’utiliser tel quel si pas de "localRow"
-    //    - ou MERGE si le JSON local a changé (préférence: on fait confiance au local)
-    if (localRow == null) {
-      // Pas de mapping local (email absent de la table Drift) -> on garde le remote tel quel.
-      debugPrint('DEBUG Auth.ensureUserDoc: no local row, keep remote as source of truth.');
-      return remote ?? {};
+    final data = snap.data()!;
+
+    // On force la cohérence de l’email si jamais il a changé
+    if (data['email'] != email) {
+      await userRef.set({'email': email, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
     }
 
-    // Comparaison fine champ par champ
-    final patch = <String, dynamic>{};
-    void _cmp(String key, String? remoteVal, String localVal) {
-      if ((remoteVal ?? '') != localVal) patch[key] = localVal;
-    }
-
-    _cmp('trigramme', remote?['trigramme'] as String?, localRow.trigramme);
-    _cmp('fonction',  remote?['fonction']  as String?, localRow.fonction);
-    _cmp('role',      remote?['role']      as String?, localRow.role);
-    _cmp('group',     remote?['group']     as String?, localRow.group);
-
-    final remoteIsAdmin = (remote?['isAdmin'] is bool) ? (remote!['isAdmin'] as bool) : false;
-    if (remoteIsAdmin != localRow.isAdmin) {
-      patch['isAdmin'] = localRow.isAdmin;
-    }
-
-    // On s’assure de stocker l’email
-    if ((remote?['email'] as String?) != email) {
-      patch['email'] = email;
-    }
-
-    if (patch.isNotEmpty) {
-      patch['updatedAt'] = FieldValue.serverTimestamp();
-      await userRef.set(patch, SetOptions(merge: true));
-      debugPrint('DEBUG Auth.ensureUserDoc: merged changes into /users/${fbUser.uid}: $patch');
-      // met à jour "remote" pour le retour
-      remote = {...?remote, ...patch};
-    } else {
-      debugPrint('DEBUG Auth.ensureUserDoc: no diff between local JSON and remote doc.');
-    }
-
-    return remote ?? {};
+    debugPrint('DEBUG Auth.ensureUserDoc: loaded from Firestore -> $data');
+    return {...data, 'email': email};
   }
+
 
   // ----------------------------------------------------------------------------
   // Login flow
@@ -153,7 +87,7 @@ class _AuthScreenState extends State<AuthScreen> {
         throw Exception('Échec de la connexion Firebase');
       }
 
-      // 2) Garantit le doc /users/{uid} (création/merge si besoin)
+      // 2) Garantit le doc /users/{uid}
       final profile = await _ensureUserDocument(fbUser: fbUser, email: email);
 
       // 3) Stocke les infos utiles en SharedPreferences
@@ -161,7 +95,7 @@ class _AuthScreenState extends State<AuthScreen> {
       await prefs.setString('userUid', fbUser.uid);
       await prefs.setString('userTrigram', (profile['trigramme'] as String? ?? '---'));
       await prefs.setString('userRole', (profile['role'] as String? ?? '').toLowerCase());
-      await prefs.setString('userFunction', (profile['fonction'] as String? ?? '').toLowerCase());
+      await prefs.setString('userFonction', (profile['fonction'] as String? ?? '').toLowerCase());
       await prefs.setString('userGroup', (profile['group'] as String? ?? '').toLowerCase());
       await prefs.setBool('isAdmin', (profile['isAdmin'] as bool?) ?? false);
 
@@ -169,7 +103,7 @@ class _AuthScreenState extends State<AuthScreen> {
         'DEBUG Auth.login: prefs set = '
             'trigram:${prefs.getString('userTrigram')}, '
             'group:${prefs.getString('userGroup')}, '
-            'fonction:${prefs.getString('userFunction')}, '
+            'fonction:${prefs.getString('userFonction')}, '
             'role:${prefs.getString('userRole')}, '
             'isAdmin:${prefs.getBool('isAdmin')}',
       );

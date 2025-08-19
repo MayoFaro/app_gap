@@ -47,136 +47,284 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
     return _MissionsData(missions: filtered, isChef: widget.canEdit);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+// Fenêtre de création/édition d’une mission hélico
+// Harmonisée visuellement avec la version avion :
+// - Pickers iOS (CupertinoPicker) dans SizedBox(height: 80)
+// - itemExtent: 32, looping: true
+// - Libellés identiques ("Heure de décollage", "Pilote 1", etc.)
+// Spécificités hélico conservées : choix vecteur (AH175/EC225) + Pilote3
+// ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+// Fenêtre de création/édition d’une mission hélico (VERSION INSTRUMENTÉE)
+// - Style harmonisé avec la version avion (CupertinoPicker height:80, itemExtent:32, looping:true)
+// - Spécificités hélico conservées (vecteur AH175/EC225 + Pilote 3)
+// - LOGS détaillés pour diagnostiquer l’absence de pilotes en base locale
+// ─────────────────────────────────────────────────────────────────────────────
   Future<void> _showMissionDialog({Mission? mission}) async {
-    // Récup équipages hélico
-    final allUsers = await widget.dao.attachedDatabase
-        .select(widget.dao.attachedDatabase.users)
-        .get();
+    // Marqueur d'entrée
+    debugPrint("[HELI][DIALOG] _showMissionDialog() CALLED @ ${DateTime.now().toIso8601String()} (missionId=${mission?.id})");
 
+    // 1) Lecture de la table users (SQLite/Drift)
+    List<dynamic> allUsers = const [];
+    try {
+      final t0 = DateTime.now();
+      allUsers = await widget.dao.attachedDatabase
+          .select(widget.dao.attachedDatabase.users)
+          .get();
+      final dtMs = DateTime.now().difference(t0).inMilliseconds;
+      debugPrint("[HELI][DIALOG] Users loaded from local DB: count=${allUsers.length} in ${dtMs}ms");
+    } catch (e, st) {
+      debugPrint("[HELI][ERROR] Failed to load users from local DB: $e");
+      debugPrint(st.toString());
+    }
+
+    // 2) Logs de diagnostic sur le contenu users
+    try {
+      debugPrint("[HELI][DIALOG] --- USERS SAMPLE (max 10) ---");
+      for (final u in allUsers.take(10)) {
+        // Les champs attendus: trigramme, group, role
+        // On protège par toString() + trim pour éviter les null
+        final tri = (u.trigramme ?? '').toString();
+        final grp = (u.group ?? '').toString();
+        final rol = (u.role ?? '').toString();
+        debugPrint("[HELI][USER] trigramme=$tri | group=$grp | role=$rol");
+      }
+
+      // Distribution group/role (utile pour voir si 'helico' / 'pilote' / 'mecano' existent)
+      final Map<String, int> groupDist = {};
+      final Map<String, int> roleDist  = {};
+      int nullGroup = 0, nullRole = 0;
+
+      for (final u in allUsers) {
+        final g = ((u.group ?? '') as String).trim().toLowerCase();
+        final r = ((u.role ?? '') as String).trim().toLowerCase();
+        if (g.isEmpty) nullGroup++; else groupDist[g] = (groupDist[g] ?? 0) + 1;
+        if (r.isEmpty) nullRole++;  else roleDist[r]  = (roleDist[r]  ?? 0) + 1;
+      }
+
+      debugPrint("[HELI][DIALOG] group distribution: $groupDist | null/empty=$nullGroup");
+      debugPrint("[HELI][DIALOG] role  distribution: $roleDist  | null/empty=$nullRole");
+    } catch (e) {
+      debugPrint("[HELI][WARN] Could not print users distribution: $e");
+    }
+
+    // 3) Listes équipages (spécificité hélico: P1 = pilotes, P2/P3 = pilotes ou mécanos)
+    //    (On garde exactement la même logique que précédemment)
     final pilotes1 = ['--'] +
         allUsers
-            .where((u) => u.group.toLowerCase() == 'helico' && u.role.toLowerCase() == 'pilote')
-            .map((u) => u.trigramme)
+            .where((u) =>
+        (u.role ?? '').toString().toLowerCase().trim() == 'pilote' &&
+            (u.group ?? '').toString().toLowerCase().trim() == 'helico')
+            .map<String>((u) => (u.trigramme ?? '').toString())
+            .where((tri) => tri.isNotEmpty)
             .toList();
 
     final pilotes23 = ['--'] +
         allUsers
-            .where((u) => u.group.toLowerCase() == 'helico' && (u.role.toLowerCase() == 'pilote' || u.role.toLowerCase() == 'mecano'))
-            .map((u) => u.trigramme)
+            .where((u) {
+          final role = (u.role ?? '').toString().toLowerCase().trim();
+          final grp  = (u.group ?? '').toString().toLowerCase().trim();
+          return grp == 'helico' && (role == 'pilote' || role == 'mecano');
+        })
+            .map<String>((u) => (u.trigramme ?? '').toString())
+            .where((tri) => tri.isNotEmpty)
             .toList();
 
-    // Vecteurs hélico
+    debugPrint("[HELI][DIALOG] pilotes1.size=${pilotes1.length}  (sample: ${pilotes1.take(10).join(', ')})");
+    debugPrint("[HELI][DIALOG] pilotes23.size=${pilotes23.length} (sample: ${pilotes23.take(10).join(', ')})");
+
+    // 4) Vecteurs hélico (spécificité conservée)
     const vecteurs = ['AH175', 'EC225'];
     String chosenVect = mission?.vecteur ?? vecteurs.first;
 
-    // Date bornée à aujourd’hui
+    // 5) Date bornée à aujourd’hui (identique avion)
     final now = DateTime.now();
     final minDate = DateTime(now.year, now.month, now.day);
     DateTime chosenDate = mission?.date ?? minDate;
     if (chosenDate.isBefore(minDate)) chosenDate = minDate;
 
-    // Destination & heure
+    // 6) Destination & heure (mêmes conventions que l’avion)
+    //    NB: 'helicoDestinations' doit exister dans ce fichier (liste de codes, ex: ['--','FOOL',...])
     String chosenDest = mission?.destinationCode ?? helicoDestinations.first;
-    String chosenTime = mission != null ? DateFormat('HH:mm').format(mission.date) : '08:30';
+    String chosenTime = mission != null
+        ? DateFormat('HH:mm').format(mission.date)
+        : '08:30';
 
-    // Pilotes initiaux
-    String p1 = mission?.pilote1 ?? pilotes1.first;
-    String p2 = mission?.pilote2 ?? pilotes23.first;
-    String p3 = mission?.pilote3 ?? pilotes23.first;
+    // 7) Pilotes initiaux
+    String chosenP1 = mission?.pilote1 ?? (pilotes1.isNotEmpty ? pilotes1.first : '--');
+    String chosenP2 = mission?.pilote2 ?? (pilotes23.isNotEmpty ? pilotes23.first : '--');
+    String chosenP3 = mission?.pilote3 ?? (pilotes23.isNotEmpty ? pilotes23.first : '--');
 
     final remarkCtrl = TextEditingController(text: mission?.description);
 
-    // Heures par pas de 30 mn
+    // 8) Plage d’heures de 30 minutes (identique avion)
     final times = List.generate(48, (i) {
       final h = i ~/ 2;
       final m = (i % 2) * 30;
       return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
     });
 
+    debugPrint("[HELI][DIALOG] Ready to open dialog | vect=$chosenVect date=${DateFormat('dd/MM/yyyy').format(chosenDate)} dest=$chosenDest time=$chosenTime");
+
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx2, setSt) => AlertDialog(
-          title: Text(mission == null ? 'Ajouter vol hélico' : 'Modifier vol hélico'),
+        builder: (ctx2, setStateInner) => AlertDialog(
+          title: Text(
+            mission == null ? 'Ajouter mission hélico' : 'Modifier mission hélico',
+          ),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Appareil
+                // ── Appareil (spécificité hélico)
                 const Text('Appareil'),
                 CupertinoSegmentedControl<String>(
                   groupValue: chosenVect,
-                  children: {for (var v in vecteurs) v: Padding(padding: const EdgeInsets.all(6), child: Text(v))},
-                  onValueChanged: (v) => setSt(() => chosenVect = v),
+                  children: {
+                    for (var v in vecteurs)
+                      v: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Text(v),
+                      ),
+                  },
+                  onValueChanged: (v) {
+                    debugPrint("[HELI][UI] chosenVect -> $v");
+                    setStateInner(() => chosenVect = v);
+                  },
                 ),
                 const SizedBox(height: 8),
 
-                // Date (flèches ±1 jour)
+                // ── Date (identique avion)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                        icon: const Icon(Icons.chevron_left),
-                        onPressed: chosenDate.isAfter(minDate)
-                            ? () => setSt(() => chosenDate = chosenDate.subtract(const Duration(days: 1)))
-                            : null),
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: chosenDate.isAfter(minDate)
+                          ? () {
+                        final old = chosenDate;
+                        setStateInner(() {
+                          chosenDate = chosenDate.subtract(const Duration(days: 1));
+                        });
+                        debugPrint("[HELI][UI] date ${DateFormat('dd/MM').format(old)} -> ${DateFormat('dd/MM').format(chosenDate)}");
+                      }
+                          : null,
+                    ),
                     Text(DateFormat('dd/MM/yyyy').format(chosenDate)),
-                    IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setSt(() => chosenDate = chosenDate.add(const Duration(days: 1)))),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () {
+                        final old = chosenDate;
+                        setStateInner(() {
+                          chosenDate = chosenDate.add(const Duration(days: 1));
+                        });
+                        debugPrint("[HELI][UI] date ${DateFormat('dd/MM').format(old)} -> ${DateFormat('dd/MM').format(chosenDate)}");
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
 
-                // Destination
+                // ── Destination (style avion)
                 const Text('Destination'),
-                CupertinoPicker(
-                  itemExtent: 24,
-                  scrollController: FixedExtentScrollController(initialItem: helicoDestinations.indexOf(chosenDest)),
-                  onSelectedItemChanged: (i) => setSt(() => chosenDest = helicoDestinations[i]),
-                  children: helicoDestinations.map((d) => Center(child: Text(d))).toList(),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: helicoDestinations.indexOf(chosenDest),
+                    ),
+                    onSelectedItemChanged: (i) {
+                      setStateInner(() => chosenDest = helicoDestinations[i]);
+                      debugPrint("[HELI][UI] chosenDest -> $chosenDest");
+                    },
+                    children: helicoDestinations
+                        .map((d) => Center(child: Text(d)))
+                        .toList(),
+                  ),
                 ),
                 const SizedBox(height: 8),
 
-                // Heure
-                const Text('Heure'),
-                CupertinoPicker(
-                  itemExtent: 24,
-                  scrollController: FixedExtentScrollController(initialItem: times.indexOf(chosenTime)),
-                  onSelectedItemChanged: (i) => setSt(() => chosenTime = times[i]),
-                  children: times.map((t) => Center(child: Text(t))).toList(),
+                // ── Heure (harmonisée avec avion)
+                const Text('Heure de décollage'),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: times.indexOf(chosenTime),
+                    ),
+                    onSelectedItemChanged: (i) {
+                      setStateInner(() => chosenTime = times[i]);
+                      debugPrint("[HELI][UI] chosenTime -> $chosenTime");
+                    },
+                    children: times.map((t) => Center(child: Text(t))).toList(),
+                  ),
                 ),
                 const SizedBox(height: 8),
 
-                // Pilote 1
-                const Text('Pil1'),
-                CupertinoPicker(
-                  itemExtent: 24,
-                  scrollController: FixedExtentScrollController(initialItem: pilotes1.indexOf(p1)),
-                  onSelectedItemChanged: (i) => setSt(() => p1 = pilotes1[i]),
-                  children: pilotes1.map((p) => Center(child: Text(p))).toList(),
+                // ── Pilote 1
+                const Text('Pilote 1'),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: pilotes1.indexOf(chosenP1),
+                    ),
+                    onSelectedItemChanged: (i) {
+                      setStateInner(() => chosenP1 = pilotes1[i]);
+                      debugPrint("[HELI][UI] chosenP1 -> $chosenP1");
+                    },
+                    children: pilotes1.map((p) => Center(child: Text(p))).toList(),
+                  ),
                 ),
                 const SizedBox(height: 8),
 
-                // Pilote 2
-                const Text('Pil2'),
-                CupertinoPicker(
-                  itemExtent: 24,
-                  scrollController: FixedExtentScrollController(initialItem: pilotes23.indexOf(p2)),
-                  onSelectedItemChanged: (i) => setSt(() => p2 = pilotes23[i]),
-                  children: pilotes23.map((p) => Center(child: Text(p))).toList(),
+                // ── Pilote 2
+                const Text('Pilote 2'),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: pilotes23.indexOf(chosenP2),
+                    ),
+                    onSelectedItemChanged: (i) {
+                      setStateInner(() => chosenP2 = pilotes23[i]);
+                      debugPrint("[HELI][UI] chosenP2 -> $chosenP2");
+                    },
+                    children: pilotes23.map((p) => Center(child: Text(p))).toList(),
+                  ),
                 ),
                 const SizedBox(height: 8),
 
-                // Pilote 3
-                const Text('Pil3'),
-                CupertinoPicker(
-                  itemExtent: 24,
-                  scrollController: FixedExtentScrollController(initialItem: pilotes23.indexOf(p3)),
-                  onSelectedItemChanged: (i) => setSt(() => p3 = pilotes23[i]),
-                  children: pilotes23.map((p) => Center(child: Text(p))).toList(),
+                // ── Pilote 3
+                const Text('Pilote 3'),
+                SizedBox(
+                  height: 80,
+                  child: CupertinoPicker(
+                    looping: true,
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: pilotes23.indexOf(chosenP3),
+                    ),
+                    onSelectedItemChanged: (i) {
+                      setStateInner(() => chosenP3 = pilotes23[i]);
+                      debugPrint("[HELI][UI] chosenP3 -> $chosenP3");
+                    },
+                    children: pilotes23.map((p) => Center(child: Text(p))).toList(),
+                  ),
                 ),
                 const SizedBox(height: 8),
 
-                // Remarque
+                // ── Remarque
                 const Text('Remarque'),
                 TextField(controller: remarkCtrl),
               ],
@@ -186,69 +334,110 @@ class _MissionsHelicoListState extends State<MissionsHelicoList> {
             if (mission != null)
               TextButton(
                 onPressed: () async {
-                  await widget.dao.deleteMission(mission.id);
+                  try {
+                    await widget.dao.deleteMission(mission.id);
+                    debugPrint("[HELI][ACTION] Mission deleted locally (id=${mission.id})");
+                  } catch (e, st) {
+                    debugPrint("[HELI][ERROR] deleteMission failed: $e");
+                    debugPrint(st.toString());
+                  }
                   Navigator.of(ctx2).pop();
                 },
                 child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
               ),
-            TextButton(onPressed: () => Navigator.of(ctx2).pop(), child: const Text('Annuler')),
+            TextButton(
+              onPressed: () {
+                debugPrint("[HELI][ACTION] Cancel dialog");
+                Navigator.of(ctx2).pop();
+              },
+              child: const Text('Annuler'),
+            ),
             ElevatedButton(
               onPressed: () async {
-                final parts = chosenTime.split(':');
-                final dt = DateTime(chosenDate.year, chosenDate.month, chosenDate.day, int.parse(parts[0]), int.parse(parts[1]));
-
-                if (mission == null) {
-                  // ➕ Création locale
-                  final comp = MissionsCompanion.insert(
-                    date: dt,
-                    vecteur: chosenVect,
-                    pilote1: p1,
-                    pilote2: Value(p2),
-                    pilote3: Value(p3),
-                    destinationCode: chosenDest,
-                    description: Value(remarkCtrl.text.trim()),
+                try {
+                  final parts = chosenTime.split(':');
+                  final dt = DateTime(
+                    chosenDate.year,
+                    chosenDate.month,
+                    chosenDate.day,
+                    int.parse(parts[0]),
+                    int.parse(parts[1]),
                   );
-                  await widget.dao.upsertMission(comp);
-                } else {
-                  // ✏️ Modification locale (on conserve id/remoteId, etc.)
-                  await widget.dao.upsertMission(
-                    mission.copyWith(
+
+                  if (mission == null) {
+                    // Création locale
+                    await widget.dao.upsertMission(MissionsCompanion.insert(
                       date: dt,
                       vecteur: chosenVect,
-                      pilote1: p1,
-                      pilote2: Value(p2),
-                      pilote3: Value(p3),
+                      pilote1: chosenP1,
+                      pilote2: Value(chosenP2),
+                      pilote3: Value(chosenP3),
                       destinationCode: chosenDest,
                       description: Value(remarkCtrl.text.trim()),
-                    ).toCompanion(true),
-                  );
-                }
+                    ));
+                    debugPrint("[HELI][ACTION] Mission created locally (vect=$chosenVect dest=$chosenDest time=$chosenTime p1=$chosenP1 p2=$chosenP2 p3=$chosenP3)");
+                  } else {
+                    // Modification locale
+                    await widget.dao.upsertMission(
+                      mission.copyWith(
+                        date: dt,
+                        vecteur: chosenVect,
+                        pilote1: chosenP1,
+                        pilote2: Value(chosenP2),
+                        pilote3: Value(chosenP3),
+                        destinationCode: chosenDest,
+                        description: Value(remarkCtrl.text.trim()),
+                      ).toCompanion(true),
+                    );
+                    debugPrint("[HELI][ACTION] Mission updated locally (id=${mission.id})");
+                  }
 
-                // 🔄 Push auto après création/modif (exactement comme MissionsList avion)
-                await widget.dao.syncPendingMissions();
+                  // Sync Firestore
+                  final t0 = DateTime.now();
+                  await widget.dao.syncPendingMissions();
+                  final dtMs = DateTime.now().difference(t0).inMilliseconds;
+                  debugPrint("[HELI][SYNC] syncPendingMissions done in ${dtMs}ms");
 
-                if (mounted) {
-                  Navigator.of(ctx2).pop();
-                  setState(() {}); // recharge liste locale
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(mission == null
-                          ? "✅ Mission hélico créée et synchronisée"
-                          : "✅ Mission hélico modifiée et synchronisée"),
-                    ),
-                  );
+                  if (mounted) {
+                    Navigator.of(ctx2).pop();
+                    setState(() {}); // recharge la liste
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(mission == null
+                            ? "✅ Mission hélico créée et synchronisée"
+                            : "✅ Mission hélico modifiée et synchronisée"),
+                      ),
+                    );
+                  }
+                } catch (e, st) {
+                  debugPrint("[HELI][ERROR] Save mission failed: $e");
+                  debugPrint(st.toString());
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("❌ Erreur: $e")),
+                    );
+                  }
                 }
               },
-              child: Text(mission == null ? 'Valider' : 'Modifier'),
+              child: const Text('Valider'),
             ),
           ],
         ),
       ),
     );
 
-    _refreshData();
-    setState(() {});
+    // Rafraîchissement de la liste
+    try {
+      _refreshData(); // ✅ corrigé : plus de await ici
+      if (mounted) setState(() {});
+      debugPrint("[HELI][DIALOG] Closed and list refreshed");
+    } catch (e, st) {
+      debugPrint("[HELI][WARN] _refreshData() failed: $e");
+      debugPrint(st.toString());
+    }
   }
+
+
 
   @override
   Widget build(BuildContext context) {

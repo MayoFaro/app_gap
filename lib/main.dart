@@ -6,16 +6,12 @@
 //    les SharedPreferences ne contiennent pas encore trigramme/group/fonction,
 //    on les récupère depuis Firestore avant d'ouvrir HomeScreen.
 //
-// Résout le cas: "Déconnecter" puis kill par le bouton rouge → redémarrage direct
-// sur Home avec trigramme '---'. Ici, si Auth dit "connecté", on regarnit les prefs.
+// Choc de simplification : on débranche complètement users.json.
 
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // rootBundle
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:drift/drift.dart'; // Value<T>
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
@@ -34,43 +30,9 @@ Future<void> main() async {
   // Base locale
   final db = AppDatabase();
 
-  // Chargement du JSON des utilisateurs (assets/users.json)
-  final raw = await rootBundle.loadString('assets/users.json');
-  final List<dynamic> jsonList = json.decode(raw);
+  // 🚫 Suppression du chargement / synchro users.json
+  // Firestore est désormais l’unique source de vérité.
 
-  // Extraction des emails du JSON
-  final jsonEmails = jsonList.map((u) => u['email'] as String).toSet();
-
-  // Comptage actuel dans la BDD
-  final existing = await db.select(db.users).get();
-  final existingEmails = existing.map((u) => u.email ?? '').toSet();
-
-  debugPrint('DEBUG main: JSON emails = $jsonEmails');
-  debugPrint('DEBUG main: DB   emails = $existingEmails');
-
-  // Synchronisation si nécessaire
-  if (existingEmails != jsonEmails) {
-    debugPrint('INFO main: divergence détectée, synchronisation JSON → BDD');
-    await db.delete(db.users).go();
-    for (final u in jsonList) {
-      await db.into(db.users).insert(
-        UsersCompanion.insert(
-          trigramme: u['trigramme'] as String,
-          fonction:  u['fonction'] as String,
-          role:      u['role'] as String,
-          group:     u['group'] as String,
-          fullName:  Value(u['fullName'] as String),
-          phone:     Value(u['phone'] as String),
-          email:     Value(u['email'] as String),
-          isAdmin:   Value(u['isAdmin'] as bool),
-        ),
-      );
-    }
-  } else {
-    debugPrint('INFO main: pas de changement détecté, pas de resynchronisation');
-  }
-
-  // Démarrage
   runApp(AppGAP(db: db));
 }
 
@@ -143,7 +105,6 @@ class _AuthGateState extends State<AuthGate> {
   Future<SharedPreferences> _ensurePrefsReady(String uid) async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Déjà en cache ?
     final hasTrig = (prefs.getString('userTrigram') ?? '').trim().isNotEmpty;
     final hasGrp  = (prefs.getString('userGroup') ?? '').trim().isNotEmpty;
     final hasFon  = (prefs.getString('userFonction') ?? '').trim().isNotEmpty;
@@ -156,12 +117,10 @@ class _AuthGateState extends State<AuthGate> {
       final snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
       if (snap.exists) {
         final data = snap.data()!;
-        // Champs conventionnels côté app
         final trigramme = (data['trigramme'] ?? '---').toString();
         final group     = (data['group'] ?? '---').toString();
         final fonction  = (data['fonction'] ?? '---').toString();
 
-        // isAdmin : certaines bases ont 'role' ou 'isAdmin'
         final role = (data['role'] ?? '').toString().toLowerCase();
         final isAdmin = (data['isAdmin'] == true) || (role == 'admin');
 
@@ -170,7 +129,6 @@ class _AuthGateState extends State<AuthGate> {
         await prefs.setString('userFonction', fonction);
         await prefs.setBool('isAdmin', isAdmin);
 
-        // Bonus utiles
         if (data['email'] != null) {
           await prefs.setString('userEmail', data['email'].toString());
         }
