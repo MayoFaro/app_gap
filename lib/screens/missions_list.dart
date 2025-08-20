@@ -32,26 +32,25 @@ class MissionsList extends StatefulWidget {
 class _MissionsListState extends State<MissionsList> {
   late Future<_MissionsData> _dataFuture;
 
-  // 🔔 Abonnement aux changements Drift pour recharger automatiquement
+  // 🔔 Abonnement Drift (permet de rafraîchir quand la table missions change)
   StreamSubscription<List<Mission>>? _missionSub;
 
   @override
   void initState() {
     super.initState();
     debugPrint('DEBUG MissionsAvion.initState');
-    _refreshData(); // 1er chargement (peut arriver avant la sync Home)
+    _refreshData(); // premier chargement
 
-    // Écoute la table locale "missions" (filtrée ATR72).
-    // À chaque changement local (après sync Home, création/suppression…), on relance _refreshData.
     final db = widget.dao.attachedDatabase;
+
+    // On écoute la table missions (sans filtrage, pour capter tous les changements).
     final stream = (db.select(db.missions)
       ..where((m) => m.vecteur.equals('ATR72')))
         .watch();
 
     _missionSub = stream.listen((rows) {
       debugPrint(
-        'DEBUG MissionsAvion.stream: changement local détecté '
-            '(rows=${rows.length}) -> _refreshData()',
+        'DEBUG MissionsAvion.stream: changement local détecté (rows=${rows.length}) -> _refreshData()',
       );
       _refreshData();
       if (mounted) setState(() {});
@@ -65,7 +64,6 @@ class _MissionsListState extends State<MissionsList> {
   }
 
   void _refreshData() {
-    debugPrint('DEBUG MissionsAvion._refreshData: start');
     _dataFuture = _loadData();
   }
 
@@ -73,8 +71,13 @@ class _MissionsListState extends State<MissionsList> {
     final all = await widget.dao.getAllMissions();
     debugPrint('DEBUG MissionsAvion._loadData: total local=${all.length}');
 
-    // On ne garde que les missions avion (ATR72)
-    final filtered = all.where((m) => m.vecteur == 'ATR72').toList()
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // ➡️ Filtrage : uniquement ATR72 et date >= aujourd’hui
+    final filtered = all
+        .where((m) => m.vecteur == 'ATR72' && !m.date.isBefore(today))
+        .toList()
       ..sort((a, b) => a.date.compareTo(b.date));
 
     final data = _MissionsData(missions: filtered, isChef: widget.canEdit);
@@ -138,8 +141,8 @@ class _MissionsListState extends State<MissionsList> {
                     IconButton(
                       icon: const Icon(Icons.chevron_left),
                       onPressed: chosenDate.isAfter(minDate)
-                          ? () => setStateInner(() =>
-                      chosenDate = chosenDate.subtract(const Duration(days: 1)))
+                          ? () => setStateInner(
+                              () => chosenDate = chosenDate.subtract(const Duration(days: 1)))
                           : null,
                     ),
                     Text(DateFormat('dd/MM/yyyy').format(chosenDate)),
@@ -164,8 +167,7 @@ class _MissionsListState extends State<MissionsList> {
                     ),
                     onSelectedItemChanged: (i) =>
                         setStateInner(() => chosenDest = destinations[i]),
-                    children:
-                    destinations.map((d) => Center(child: Text(d))).toList(),
+                    children: destinations.map((d) => Center(child: Text(d))).toList(),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -199,8 +201,7 @@ class _MissionsListState extends State<MissionsList> {
                     ),
                     onSelectedItemChanged: (i) =>
                         setStateInner(() => chosenP1 = pilotes[i]),
-                    children:
-                    pilotes.map((p) => Center(child: Text(p))).toList(),
+                    children: pilotes.map((p) => Center(child: Text(p))).toList(),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -217,8 +218,7 @@ class _MissionsListState extends State<MissionsList> {
                     ),
                     onSelectedItemChanged: (i) =>
                         setStateInner(() => chosenP2 = pilotes[i]),
-                    children:
-                    pilotes.map((p) => Center(child: Text(p))).toList(),
+                    children: pilotes.map((p) => Center(child: Text(p))).toList(),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -236,8 +236,7 @@ class _MissionsListState extends State<MissionsList> {
                   await widget.dao.deleteMission(mission.id);
                   Navigator.of(ctx2).pop();
                 },
-                child:
-                const Text('Supprimer', style: TextStyle(color: Colors.red)),
+                child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
               ),
             TextButton(
                 onPressed: () => Navigator.of(ctx2).pop(),
@@ -265,23 +264,20 @@ class _MissionsListState extends State<MissionsList> {
                   ));
                 } else {
                   // ✏️ Modification
-                  await widget.dao.upsertMission(mission
-                      .copyWith(
+                  await widget.dao.upsertMission(mission.copyWith(
                     date: dt,
                     pilote1: chosenP1,
                     pilote2: Value(chosenP2),
                     destinationCode: chosenDest,
                     description: Value(remarkCtrl.text.trim()),
-                  )
-                      .toCompanion(true));
+                  ).toCompanion(true));
                 }
 
-                // 🔄 Push auto après création/modif
+                // 🔄 Sync Firestore
                 await widget.dao.syncPendingMissions();
 
                 if (mounted) {
                   Navigator.of(ctx2).pop();
-                  // FutureBuilder se mettra à jour via le stream -> _refreshData() + setState()
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(mission == null
@@ -297,7 +293,8 @@ class _MissionsListState extends State<MissionsList> {
         ),
       ),
     );
-    // Force un tour de _refreshData après fermeture
+
+    // Force un refresh après fermeture
     _refreshData();
     if (mounted) setState(() {});
   }
@@ -331,14 +328,10 @@ class _MissionsListState extends State<MissionsList> {
       body: FutureBuilder<_MissionsData>(
         future: _dataFuture,
         builder: (ctx, snap) {
-          debugPrint(
-              'DEBUG MissionsAvion.FutureBuilder: state=${snap.connectionState} '
-                  'hasData=${snap.hasData} hasError=${snap.hasError}');
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
           final data = snap.data!;
-          debugPrint('DEBUG MissionsAvion.build: isChef=${data.isChef}, items=${data.missions.length}');
           if (data.missions.isEmpty) {
             return const Center(child: Text('Aucune mission avion'));
           }
@@ -359,8 +352,7 @@ class _MissionsListState extends State<MissionsList> {
                       '${m.pilote1}/${m.pilote2} → ${m.destinationCode}'
                       '${m.description != null ? ' – ${m.description}' : ''}',
                 ),
-                onLongPress:
-                data.isChef ? () => _showMissionDialog(mission: m) : null,
+                onLongPress: data.isChef ? () => _showMissionDialog(mission: m) : null,
               );
             },
           );

@@ -14,7 +14,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'firebase_options.dart';
+import 'firebase_options.dart'; //Target of URI doesn't exist: 'firebase_options.dart'.
 import 'data/app_database.dart' hide User;
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
