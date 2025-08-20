@@ -1,4 +1,5 @@
 // lib/screens/missions_list.dart
+import 'dart:async';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -31,18 +32,46 @@ class MissionsList extends StatefulWidget {
 class _MissionsListState extends State<MissionsList> {
   late Future<_MissionsData> _dataFuture;
 
+  // 🔔 Abonnement aux changements Drift pour recharger automatiquement
+  StreamSubscription<List<Mission>>? _missionSub;
+
   @override
   void initState() {
     super.initState();
-    _refreshData();
+    debugPrint('DEBUG MissionsAvion.initState');
+    _refreshData(); // 1er chargement (peut arriver avant la sync Home)
+
+    // Écoute la table locale "missions" (filtrée ATR72).
+    // À chaque changement local (après sync Home, création/suppression…), on relance _refreshData.
+    final db = widget.dao.attachedDatabase;
+    final stream = (db.select(db.missions)
+      ..where((m) => m.vecteur.equals('ATR72')))
+        .watch();
+
+    _missionSub = stream.listen((rows) {
+      debugPrint(
+        'DEBUG MissionsAvion.stream: changement local détecté '
+            '(rows=${rows.length}) -> _refreshData()',
+      );
+      _refreshData();
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _missionSub?.cancel();
+    super.dispose();
   }
 
   void _refreshData() {
+    debugPrint('DEBUG MissionsAvion._refreshData: start');
     _dataFuture = _loadData();
   }
 
   Future<_MissionsData> _loadData() async {
     final all = await widget.dao.getAllMissions();
+    debugPrint('DEBUG MissionsAvion._loadData: total local=${all.length}');
 
     // On ne garde que les missions avion (ATR72)
     final filtered = all.where((m) => m.vecteur == 'ATR72').toList()
@@ -50,7 +79,8 @@ class _MissionsListState extends State<MissionsList> {
 
     final data = _MissionsData(missions: filtered, isChef: widget.canEdit);
     debugPrint(
-        'DEBUG MissionsAvion._loadData: isChef=${data.isChef}, count=${data.missions.length}');
+      'DEBUG MissionsAvion._loadData: isChef=${data.isChef}, filtered=${data.missions.length}',
+    );
     return data;
   }
 
@@ -95,9 +125,8 @@ class _MissionsListState extends State<MissionsList> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx2, setStateInner) => AlertDialog(
-          title: Text(mission == null
-              ? 'Ajouter mission avion'
-              : 'Modifier mission avion'),
+          title: Text(
+              mission == null ? 'Ajouter mission avion' : 'Modifier mission avion'),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,17 +138,15 @@ class _MissionsListState extends State<MissionsList> {
                     IconButton(
                       icon: const Icon(Icons.chevron_left),
                       onPressed: chosenDate.isAfter(minDate)
-                          ? () => setStateInner(() => chosenDate =
-                          chosenDate.subtract(const Duration(days: 1)))
+                          ? () => setStateInner(() =>
+                      chosenDate = chosenDate.subtract(const Duration(days: 1)))
                           : null,
                     ),
                     Text(DateFormat('dd/MM/yyyy').format(chosenDate)),
                     IconButton(
                       icon: const Icon(Icons.chevron_right),
-                      onPressed: () =>
-                          setStateInner(() => chosenDate = chosenDate.add(
-                            const Duration(days: 1),
-                          )),
+                      onPressed: () => setStateInner(
+                              () => chosenDate = chosenDate.add(const Duration(days: 1))),
                     ),
                   ],
                 ),
@@ -172,7 +199,8 @@ class _MissionsListState extends State<MissionsList> {
                     ),
                     onSelectedItemChanged: (i) =>
                         setStateInner(() => chosenP1 = pilotes[i]),
-                    children: pilotes.map((p) => Center(child: Text(p))).toList(),
+                    children:
+                    pilotes.map((p) => Center(child: Text(p))).toList(),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -189,7 +217,8 @@ class _MissionsListState extends State<MissionsList> {
                     ),
                     onSelectedItemChanged: (i) =>
                         setStateInner(() => chosenP2 = pilotes[i]),
-                    children: pilotes.map((p) => Center(child: Text(p))).toList(),
+                    children:
+                    pilotes.map((p) => Center(child: Text(p))).toList(),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -207,8 +236,8 @@ class _MissionsListState extends State<MissionsList> {
                   await widget.dao.deleteMission(mission.id);
                   Navigator.of(ctx2).pop();
                 },
-                child: const Text('Supprimer',
-                    style: TextStyle(color: Colors.red)),
+                child:
+                const Text('Supprimer', style: TextStyle(color: Colors.red)),
               ),
             TextButton(
                 onPressed: () => Navigator.of(ctx2).pop(),
@@ -236,13 +265,15 @@ class _MissionsListState extends State<MissionsList> {
                   ));
                 } else {
                   // ✏️ Modification
-                  await widget.dao.upsertMission(mission.copyWith(
+                  await widget.dao.upsertMission(mission
+                      .copyWith(
                     date: dt,
                     pilote1: chosenP1,
                     pilote2: Value(chosenP2),
                     destinationCode: chosenDest,
                     description: Value(remarkCtrl.text.trim()),
-                  ).toCompanion(true));
+                  )
+                      .toCompanion(true));
                 }
 
                 // 🔄 Push auto après création/modif
@@ -250,7 +281,7 @@ class _MissionsListState extends State<MissionsList> {
 
                 if (mounted) {
                   Navigator.of(ctx2).pop();
-                  setState(() {}); // recharge la liste
+                  // FutureBuilder se mettra à jour via le stream -> _refreshData() + setState()
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(mission == null
@@ -266,9 +297,9 @@ class _MissionsListState extends State<MissionsList> {
         ),
       ),
     );
-
+    // Force un tour de _refreshData après fermeture
     _refreshData();
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   @override
@@ -281,15 +312,18 @@ class _MissionsListState extends State<MissionsList> {
             icon: const Icon(Icons.sync),
             tooltip: "Synchroniser maintenant",
             onPressed: () async {
+              debugPrint('DEBUG MissionsAvion.syncButton: start');
               await widget.dao.syncPendingMissions();
+              debugPrint('DEBUG MissionsAvion.syncButton: done, call _refreshData');
+              _refreshData();
               if (mounted) {
+                setState(() {});
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content: Text("🔄 Synchronisation manuelle effectuée")),
+                    content: Text("🔄 Synchronisation manuelle effectuée"),
+                  ),
                 );
               }
-              _refreshData();
-              setState(() {});
             },
           ),
         ],
@@ -297,10 +331,14 @@ class _MissionsListState extends State<MissionsList> {
       body: FutureBuilder<_MissionsData>(
         future: _dataFuture,
         builder: (ctx, snap) {
+          debugPrint(
+              'DEBUG MissionsAvion.FutureBuilder: state=${snap.connectionState} '
+                  'hasData=${snap.hasData} hasError=${snap.hasError}');
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
           final data = snap.data!;
+          debugPrint('DEBUG MissionsAvion.build: isChef=${data.isChef}, items=${data.missions.length}');
           if (data.missions.isEmpty) {
             return const Center(child: Text('Aucune mission avion'));
           }
@@ -321,9 +359,8 @@ class _MissionsListState extends State<MissionsList> {
                       '${m.pilote1}/${m.pilote2} → ${m.destinationCode}'
                       '${m.description != null ? ' – ${m.description}' : ''}',
                 ),
-                onLongPress: data.isChef
-                    ? () => _showMissionDialog(mission: m)
-                    : null,
+                onLongPress:
+                data.isChef ? () => _showMissionDialog(mission: m) : null,
               );
             },
           );

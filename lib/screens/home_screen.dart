@@ -401,6 +401,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     MaterialPageRoute(
                       builder: (_) => ChefMessagesList(
                         currentUser: _userTrigram,
+                        dao: _chefDao,
                       ),
                     ),
                   );

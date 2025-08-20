@@ -2,7 +2,7 @@
 //
 // Bannière "Message du chef" pour la page d'accueil.
 // - Stream Firestore des 20 derniers messages (orderBy createdAt desc).
-// - Filtre côté client: group in {'all', userGroup}.
+// - Filtre côté client: group in {'tous', userGroup}.
 // - Affiche le plus récent non "dismissed".
 // - À la première apparition, écrit un ACK dans /chefMessages/{id}/acks/{uid}.
 //
@@ -22,6 +22,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 
 class ChefMessageBanner extends StatefulWidget {
   const ChefMessageBanner({super.key});
@@ -101,10 +102,10 @@ class _ChefMessageBannerState extends State<ChefMessageBanner> {
         }
         final docs = snap.data?.docs ?? [];
 
-        // Filtre côté client: group == 'all' ou == _userGroup
+        // Filtre côté client: group =='tous' ou == _userGroup
         final filtered = docs.where((d) {
-          final g = (d.get('group') ?? 'all').toString().toLowerCase();
-          return g == 'all' || g == _userGroup;
+          final g = (d.get('group') ?? 'tous').toString().toLowerCase();
+          return g == 'tous' || g == _userGroup;
         }).toList();
 
         if (filtered.isEmpty) return const SizedBox.shrink();
@@ -115,9 +116,10 @@ class _ChefMessageBannerState extends State<ChefMessageBanner> {
         // ACK (fire-and-forget)
         _ackIfNeeded(doc);
 
-        final content = (doc.get('message') ?? doc.get('content') ?? '').toString();
+        //final content = (doc.get('message') ?? doc.get('content') ?? '').toString();
+        final content = (doc.get('content') ?? '').toString();
         final author = (doc.get('author') ?? '').toString();
-        final group = (doc.get('group') ?? 'all').toString();
+        final group = (doc.get('group') ?? 'tous').toString();
         DateTime? createdAt;
         final ts = doc.get('createdAt');
         if (ts is Timestamp) createdAt = ts.toDate();
