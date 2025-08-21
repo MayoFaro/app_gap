@@ -7,8 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/app_database.dart';
 import 'register_screen.dart';
 import 'home_screen.dart';
+import '../services/sync_service.dart'; // AJOUT : service de synchro centralisé
 
-/// Écran d'authentification avec "auto-provisioning" du profil Firestore.
+/// Écran d'authentification avec "auto-provisioning" du profil Firestore. POUEETTT
 /// - Au login, on s'assure qu'un doc /users/{uid} existe.
 /// - On stocke ensuite le profil en SharedPreferences.
 class AuthScreen extends StatefulWidget {
@@ -26,6 +27,16 @@ class _AuthScreenState extends State<AuthScreen> {
 
   bool _isLoading = false;
   String? _error;
+  Fonction _mapFonction(String? f) {
+    switch ((f ?? '').toLowerCase()) {
+      case 'chef':
+        return Fonction.chef;
+      case 'cdt':
+        return Fonction.cdt;
+      default:
+        return Fonction.none;
+    }
+  }
 
   @override
   void dispose() {
@@ -107,6 +118,25 @@ class _AuthScreenState extends State<AuthScreen> {
             'role:${prefs.getString('userRole')}, '
             'isAdmin:${prefs.getBool('isAdmin')}',
       );
+
+      // --- AJOUT : déclenchement de la synchro centralisée ---
+      try {
+        final fonctionEnum = _mapFonction(profile['fonction'] as String?);
+        debugPrint('SYNC[auth]: lancement syncAll pour fonction=${profile['fonction']}');
+
+        final syncService = SyncService(
+          db: widget.db,
+          fonction: fonctionEnum,
+        );
+
+        await syncService.syncAll(); // on attend la fin : l'indicateur _isLoading est déjà affiché
+        debugPrint('SYNC[auth]: terminé');
+      } catch (e) {
+        // On ne bloque PAS l’accès à l’app si la synchro échoue : on log et on continue
+        debugPrint('SYNC[auth]: erreur pendant syncAll -> $e');
+      }
+      // --- FIN AJOUT ---
+
 
       // 4) Navigation vers Home
       if (!mounted) return;
