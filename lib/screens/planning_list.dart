@@ -5,6 +5,12 @@
 //   - multi-jours : showDateRangePicker
 //   - suppression : ferme le dialog avant l'action pour éviter le double clic sur un doc déjà supprimé
 // Restauration d’offset pour ne pas retomber au 01/01.
+//
+// Correctifs (2025-08-21):
+// - Tri alphabétique fiable des trigrammes: normalisation (trim + upper), déduplication, tri.
+// - Suppression de l'entrée '---' dans la colonne des trigrammes.
+// - Logs de diagnostic pour comprendre pourquoi un trigramme (ex: PVT) se place en tête.
+// - Lecture d'events Firestore robuste: accepte user = uid (ancien) OU user = trigramme (nouveau).
 
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -61,43 +67,102 @@ class _PlanningListState extends State<PlanningList> {
     _preloadData();
   }
 
+  // --- Helpers normalisation / logs ------------------------------------------
+
+  String _normTri(String s) => s.trim().toUpperCase();
+
+  void _logUsersOrder(String stage) {
+    // Liste triée et quelques infos pour diagnostiquer le "PVT en tête"
+    debugPrint("PLANNING[users][$stage] count=${_users.length}");
+    if (_users.isNotEmpty) {
+      debugPrint("PLANNING[users][$stage] first='${_users.first}' codeUnits=${_users.first.codeUnits}");
+      final idxPvt = _users.indexOf('PVT');
+      debugPrint("PLANNING[users][$stage] indexOf('PVT')=$idxPvt");
+      // Montre les 15 premiers pour un coup d’œil rapide
+      final preview = _users.take(15).join(', ');
+      debugPrint("PLANNING[users][$stage] head15=[$preview]");
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+
   Future<void> _preloadData() async {
     // 1) Users (locaux)
     final usersRows = await widget.dao.attachedDatabase
         .select(widget.dao.attachedDatabase.users)
         .get();
-    _users = usersRows.map((u) => u.trigramme).toList();
+
+    // Normalisation, déduplication, tri alpha
+    final raw = usersRows
+        .map((u) => (u.trigramme ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .map(_normTri)
+        .toSet()
+        .toList();
+
+    raw.remove('---'); // ne pas afficher le placeholder
+    raw.sort((a, b) => a.compareTo(b));
+    _users = raw;
+
+    _logUsersOrder('after_local_load_and_sort');
 
     _eventsByUser = {for (var t in _users) t: []};
 
     // 2) Map UID -> trigramme (Firestore /users)
+    //    (sert pour les anciens events où `planningEvents.user` = uid)
     final userDocs =
     await FirebaseFirestore.instance.collection('users').get();
     final uidToTri = <String, String>{};
     for (var d in userDocs.docs) {
       final data = d.data();
       final tri = data['trigramme'];
-      if (tri is String) uidToTri[d.id] = tri;
+      if (tri is String) uidToTri[d.id] = _normTri(tri);
     }
 
     // 3) Events Firestore
+    //    Compatible ancien (user = uid) et nouveau (user = trigramme) schéma
     final snap = await FirebaseFirestore.instance
         .collection('planningEvents')
         .get();
 
+    int usedAsUid = 0;
+    int usedAsTri = 0;
+    int skippedNoMatch = 0;
+
     for (var doc in snap.docs) {
       final data = doc.data();
-      final uid = data['user'] as String?;
+      final userField = data['user'] as String?;
       final type = data['typeEvent'] as String?;
       final tsStart = data['dateStart'] as Timestamp?;
       final tsEnd = data['dateEnd'] as Timestamp?;
       final rank = data['rank'];
 
-      if (uid == null || type == null || tsStart == null || tsEnd == null) {
+      if (userField == null || type == null || tsStart == null || tsEnd == null) {
         continue;
       }
-      final trig = uidToTri[uid];
-      if (trig == null) continue;
+
+      // 3.a Essaie 1 : 'user' est déjà un trigramme
+      String? trig = _users.contains(_normTri(userField)) ? _normTri(userField) : null;
+      if (trig != null) {
+        usedAsTri++;
+      } else {
+        // 3.b Essaie 2 : 'user' est un uid, on mappe via /users
+        trig = uidToTri[userField];
+        if (trig != null) {
+          usedAsUid++;
+        } else {
+          skippedNoMatch++;
+          debugPrint("PLANNING[events] skip doc ${doc.id}: user='$userField' non résolu (ni trigramme, ni uid connu)");
+          continue;
+        }
+      }
+
+      // Si pour une raison quelconque l'utilisateur n'est pas dans la grille, on l'ignore
+      if (!_eventsByUser.containsKey(trig)) {
+        // On ne spam pas les logs, juste la première fois
+        debugPrint("PLANNING[events] trigram '$trig' non présent dans _users, event ignoré (doc=${doc.id})");
+        continue;
+      }
 
       _eventsByUser[trig]!.add(
         PlanningEvent(
@@ -106,12 +171,14 @@ class _PlanningListState extends State<PlanningList> {
           typeEvent: type,
           dateStart: tsStart.toDate(),
           dateEnd: tsEnd.toDate(),
-          uid: uid,
+          uid: data['uid'] is String ? (data['uid'] as String) : '',
           firestoreId: doc.id,
           rank: (rank is int) ? rank : null,
         ),
       );
     }
+
+    debugPrint("PLANNING[events] mapped: asTri=$usedAsTri, asUid=$usedAsUid, skipped=$skippedNoMatch");
 
     if (mounted) setState(() => _isReady = true);
   }
@@ -120,6 +187,7 @@ class _PlanningListState extends State<PlanningList> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _trigram = prefs.getString('userTrigram') ?? '---';
+      _trigram = _normTri(_trigram);
     });
   }
 

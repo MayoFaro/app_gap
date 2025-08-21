@@ -16,7 +16,6 @@ import 'mission_dao.dart';
 import 'planning_dao.dart';
 import 'chef_message_dao.dart';
 import 'notification_dao.dart';
-
 part 'app_database.g.dart';
 
 /// Table des utilisateurs
@@ -80,21 +79,58 @@ class PlanningEvents extends Table {
 }
 
 /// Table des messages du chef
+// lib/data/chef_message_tables.dart
+//
+// Tables Drift pour les "messages du chef" et leurs ACKs.
+// - ChefMessages : messages publiés par les chefs/CDT
+// - ChefMessageAcks : accusés de lecture (un par trigramme)
+//
+// Remarques :
+// - remoteId : id du doc Firestore (permet l'upsert côté sync)
+// - La colonne SQL est nommée 'grp' pour éviter tout conflit avec le mot-clé SQL GROUP
+//   mais exposée en tant que 'group' côté Dart.
+
+
 class ChefMessages extends Table {
-  IntColumn      get id          => integer().autoIncrement()();
-  TextColumn     get content     => text().withLength(min: 1, max: 500)();
-  TextColumn     get authorRole  => text().withLength(min: 3, max: 15)();
-  TextColumn     get group       => text().withLength(min: 4, max: 6)();
-  DateTimeColumn get timestamp   => dateTime().withDefault(currentDateAndTime)();
+  IntColumn get id => integer().autoIncrement()();
+
+  // Id du document Firestore
+  TextColumn get remoteId => text().unique()(); // not null + unique
+
+  // Contenu texte libre
+  TextColumn get content => text()();
+
+  // Groupe ciblé: 'tous' | 'avion' | 'helico'
+  TextColumn get group => text().named('grp')(); // colonne SQL 'grp', champ Dart 'group'
+
+  // Auteur (trigramme), et rôle affiché ('chef' | 'cdt')
+  TextColumn get author => text()();
+  TextColumn get authorRole => text()();
+
+  // Horodatages (server-side en Firestore ; on les recopie ici)
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
 }
 
-/// Table des acknowledgements de lecture
 class ChefMessageAcks extends Table {
-  IntColumn      get id         => integer().autoIncrement()();
-  IntColumn      get messageId  => integer().customConstraint('NOT NULL REFERENCES chef_messages(id)')();
-  TextColumn     get trigramme  => text().withLength(min: 1, max: 10)();
-  DateTimeColumn get seenAt     => dateTime().withDefault(currentDateAndTime)();
+  IntColumn get id => integer().autoIncrement()();
+
+  IntColumn get messageId =>
+      integer().references(ChefMessages, #id, onDelete: KeyAction.cascade)();
+
+  TextColumn get trigramme => text()();
+  TextColumn get uid => text().nullable()();
+
+  DateTimeColumn get seenAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  // Un seul ACK par (message, trigramme)
+  @override
+  List<Set<Column>> get uniqueKeys => [
+    {messageId, trigramme}
+  ];
 }
+
 
 /// Table des notifications
 class Notifications extends Table {

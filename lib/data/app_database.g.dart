@@ -1135,43 +1135,51 @@ class $ChefMessagesTable extends ChefMessages
       requiredDuringInsert: false,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _remoteIdMeta =
+      const VerificationMeta('remoteId');
+  @override
+  late final GeneratedColumn<String> remoteId = GeneratedColumn<String>(
+      'remote_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'));
   static const VerificationMeta _contentMeta =
       const VerificationMeta('content');
   @override
   late final GeneratedColumn<String> content = GeneratedColumn<String>(
       'content', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 1, maxTextLength: 500),
-      type: DriftSqlType.string,
-      requiredDuringInsert: true);
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _groupMeta = const VerificationMeta('group');
+  @override
+  late final GeneratedColumn<String> group = GeneratedColumn<String>(
+      'grp', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _authorMeta = const VerificationMeta('author');
+  @override
+  late final GeneratedColumn<String> author = GeneratedColumn<String>(
+      'author', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _authorRoleMeta =
       const VerificationMeta('authorRole');
   @override
   late final GeneratedColumn<String> authorRole = GeneratedColumn<String>(
       'author_role', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 3, maxTextLength: 15),
-      type: DriftSqlType.string,
-      requiredDuringInsert: true);
-  static const VerificationMeta _groupMeta = const VerificationMeta('group');
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
   @override
-  late final GeneratedColumn<String> group = GeneratedColumn<String>(
-      'group', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 4, maxTextLength: 6),
-      type: DriftSqlType.string,
-      requiredDuringInsert: true);
-  static const VerificationMeta _timestampMeta =
-      const VerificationMeta('timestamp');
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
   @override
-  late final GeneratedColumn<DateTime> timestamp = GeneratedColumn<DateTime>(
-      'timestamp', aliasedName, false,
-      type: DriftSqlType.dateTime,
-      requiredDuringInsert: false,
-      defaultValue: currentDateAndTime);
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, content, authorRole, group, timestamp];
+      [id, remoteId, content, group, author, authorRole, createdAt, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1185,11 +1193,29 @@ class $ChefMessagesTable extends ChefMessages
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
+    if (data.containsKey('remote_id')) {
+      context.handle(_remoteIdMeta,
+          remoteId.isAcceptableOrUnknown(data['remote_id']!, _remoteIdMeta));
+    } else if (isInserting) {
+      context.missing(_remoteIdMeta);
+    }
     if (data.containsKey('content')) {
       context.handle(_contentMeta,
           content.isAcceptableOrUnknown(data['content']!, _contentMeta));
     } else if (isInserting) {
       context.missing(_contentMeta);
+    }
+    if (data.containsKey('grp')) {
+      context.handle(
+          _groupMeta, group.isAcceptableOrUnknown(data['grp']!, _groupMeta));
+    } else if (isInserting) {
+      context.missing(_groupMeta);
+    }
+    if (data.containsKey('author')) {
+      context.handle(_authorMeta,
+          author.isAcceptableOrUnknown(data['author']!, _authorMeta));
+    } else if (isInserting) {
+      context.missing(_authorMeta);
     }
     if (data.containsKey('author_role')) {
       context.handle(
@@ -1199,15 +1225,15 @@ class $ChefMessagesTable extends ChefMessages
     } else if (isInserting) {
       context.missing(_authorRoleMeta);
     }
-    if (data.containsKey('group')) {
-      context.handle(
-          _groupMeta, group.isAcceptableOrUnknown(data['group']!, _groupMeta));
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
     } else if (isInserting) {
-      context.missing(_groupMeta);
+      context.missing(_createdAtMeta);
     }
-    if (data.containsKey('timestamp')) {
-      context.handle(_timestampMeta,
-          timestamp.isAcceptableOrUnknown(data['timestamp']!, _timestampMeta));
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
     }
     return context;
   }
@@ -1220,14 +1246,20 @@ class $ChefMessagesTable extends ChefMessages
     return ChefMessage(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      remoteId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}remote_id'])!,
       content: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}content'])!,
+      group: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}grp'])!,
+      author: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}author'])!,
       authorRole: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}author_role'])!,
-      group: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}group'])!,
-      timestamp: attachedDatabase.typeMapping
-          .read(DriftSqlType.dateTime, data['${effectivePrefix}timestamp'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at']),
     );
   }
 
@@ -1239,34 +1271,50 @@ class $ChefMessagesTable extends ChefMessages
 
 class ChefMessage extends DataClass implements Insertable<ChefMessage> {
   final int id;
+  final String remoteId;
   final String content;
-  final String authorRole;
   final String group;
-  final DateTime timestamp;
+  final String author;
+  final String authorRole;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
   const ChefMessage(
       {required this.id,
+      required this.remoteId,
       required this.content,
-      required this.authorRole,
       required this.group,
-      required this.timestamp});
+      required this.author,
+      required this.authorRole,
+      required this.createdAt,
+      this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['remote_id'] = Variable<String>(remoteId);
     map['content'] = Variable<String>(content);
+    map['grp'] = Variable<String>(group);
+    map['author'] = Variable<String>(author);
     map['author_role'] = Variable<String>(authorRole);
-    map['group'] = Variable<String>(group);
-    map['timestamp'] = Variable<DateTime>(timestamp);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
     return map;
   }
 
   ChefMessagesCompanion toCompanion(bool nullToAbsent) {
     return ChefMessagesCompanion(
       id: Value(id),
+      remoteId: Value(remoteId),
       content: Value(content),
-      authorRole: Value(authorRole),
       group: Value(group),
-      timestamp: Value(timestamp),
+      author: Value(author),
+      authorRole: Value(authorRole),
+      createdAt: Value(createdAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
     );
   }
 
@@ -1275,10 +1323,13 @@ class ChefMessage extends DataClass implements Insertable<ChefMessage> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return ChefMessage(
       id: serializer.fromJson<int>(json['id']),
+      remoteId: serializer.fromJson<String>(json['remoteId']),
       content: serializer.fromJson<String>(json['content']),
-      authorRole: serializer.fromJson<String>(json['authorRole']),
       group: serializer.fromJson<String>(json['group']),
-      timestamp: serializer.fromJson<DateTime>(json['timestamp']),
+      author: serializer.fromJson<String>(json['author']),
+      authorRole: serializer.fromJson<String>(json['authorRole']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
     );
   }
   @override
@@ -1286,101 +1337,141 @@ class ChefMessage extends DataClass implements Insertable<ChefMessage> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'remoteId': serializer.toJson<String>(remoteId),
       'content': serializer.toJson<String>(content),
-      'authorRole': serializer.toJson<String>(authorRole),
       'group': serializer.toJson<String>(group),
-      'timestamp': serializer.toJson<DateTime>(timestamp),
+      'author': serializer.toJson<String>(author),
+      'authorRole': serializer.toJson<String>(authorRole),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
     };
   }
 
   ChefMessage copyWith(
           {int? id,
+          String? remoteId,
           String? content,
-          String? authorRole,
           String? group,
-          DateTime? timestamp}) =>
+          String? author,
+          String? authorRole,
+          DateTime? createdAt,
+          Value<DateTime?> updatedAt = const Value.absent()}) =>
       ChefMessage(
         id: id ?? this.id,
+        remoteId: remoteId ?? this.remoteId,
         content: content ?? this.content,
-        authorRole: authorRole ?? this.authorRole,
         group: group ?? this.group,
-        timestamp: timestamp ?? this.timestamp,
+        author: author ?? this.author,
+        authorRole: authorRole ?? this.authorRole,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
       );
   @override
   String toString() {
     return (StringBuffer('ChefMessage(')
           ..write('id: $id, ')
+          ..write('remoteId: $remoteId, ')
           ..write('content: $content, ')
-          ..write('authorRole: $authorRole, ')
           ..write('group: $group, ')
-          ..write('timestamp: $timestamp')
+          ..write('author: $author, ')
+          ..write('authorRole: $authorRole, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, content, authorRole, group, timestamp);
+  int get hashCode => Object.hash(
+      id, remoteId, content, group, author, authorRole, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ChefMessage &&
           other.id == this.id &&
+          other.remoteId == this.remoteId &&
           other.content == this.content &&
-          other.authorRole == this.authorRole &&
           other.group == this.group &&
-          other.timestamp == this.timestamp);
+          other.author == this.author &&
+          other.authorRole == this.authorRole &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class ChefMessagesCompanion extends UpdateCompanion<ChefMessage> {
   final Value<int> id;
+  final Value<String> remoteId;
   final Value<String> content;
-  final Value<String> authorRole;
   final Value<String> group;
-  final Value<DateTime> timestamp;
+  final Value<String> author;
+  final Value<String> authorRole;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> updatedAt;
   const ChefMessagesCompanion({
     this.id = const Value.absent(),
+    this.remoteId = const Value.absent(),
     this.content = const Value.absent(),
-    this.authorRole = const Value.absent(),
     this.group = const Value.absent(),
-    this.timestamp = const Value.absent(),
+    this.author = const Value.absent(),
+    this.authorRole = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   ChefMessagesCompanion.insert({
     this.id = const Value.absent(),
+    required String remoteId,
     required String content,
-    required String authorRole,
     required String group,
-    this.timestamp = const Value.absent(),
-  })  : content = Value(content),
+    required String author,
+    required String authorRole,
+    required DateTime createdAt,
+    this.updatedAt = const Value.absent(),
+  })  : remoteId = Value(remoteId),
+        content = Value(content),
+        group = Value(group),
+        author = Value(author),
         authorRole = Value(authorRole),
-        group = Value(group);
+        createdAt = Value(createdAt);
   static Insertable<ChefMessage> custom({
     Expression<int>? id,
+    Expression<String>? remoteId,
     Expression<String>? content,
-    Expression<String>? authorRole,
     Expression<String>? group,
-    Expression<DateTime>? timestamp,
+    Expression<String>? author,
+    Expression<String>? authorRole,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (remoteId != null) 'remote_id': remoteId,
       if (content != null) 'content': content,
+      if (group != null) 'grp': group,
+      if (author != null) 'author': author,
       if (authorRole != null) 'author_role': authorRole,
-      if (group != null) 'group': group,
-      if (timestamp != null) 'timestamp': timestamp,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
   ChefMessagesCompanion copyWith(
       {Value<int>? id,
+      Value<String>? remoteId,
       Value<String>? content,
-      Value<String>? authorRole,
       Value<String>? group,
-      Value<DateTime>? timestamp}) {
+      Value<String>? author,
+      Value<String>? authorRole,
+      Value<DateTime>? createdAt,
+      Value<DateTime?>? updatedAt}) {
     return ChefMessagesCompanion(
       id: id ?? this.id,
+      remoteId: remoteId ?? this.remoteId,
       content: content ?? this.content,
-      authorRole: authorRole ?? this.authorRole,
       group: group ?? this.group,
-      timestamp: timestamp ?? this.timestamp,
+      author: author ?? this.author,
+      authorRole: authorRole ?? this.authorRole,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -1390,17 +1481,26 @@ class ChefMessagesCompanion extends UpdateCompanion<ChefMessage> {
     if (id.present) {
       map['id'] = Variable<int>(id.value);
     }
+    if (remoteId.present) {
+      map['remote_id'] = Variable<String>(remoteId.value);
+    }
     if (content.present) {
       map['content'] = Variable<String>(content.value);
+    }
+    if (group.present) {
+      map['grp'] = Variable<String>(group.value);
+    }
+    if (author.present) {
+      map['author'] = Variable<String>(author.value);
     }
     if (authorRole.present) {
       map['author_role'] = Variable<String>(authorRole.value);
     }
-    if (group.present) {
-      map['group'] = Variable<String>(group.value);
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
     }
-    if (timestamp.present) {
-      map['timestamp'] = Variable<DateTime>(timestamp.value);
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
     return map;
   }
@@ -1409,10 +1509,13 @@ class ChefMessagesCompanion extends UpdateCompanion<ChefMessage> {
   String toString() {
     return (StringBuffer('ChefMessagesCompanion(')
           ..write('id: $id, ')
+          ..write('remoteId: $remoteId, ')
           ..write('content: $content, ')
-          ..write('authorRole: $authorRole, ')
           ..write('group: $group, ')
-          ..write('timestamp: $timestamp')
+          ..write('author: $author, ')
+          ..write('authorRole: $authorRole, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -1440,16 +1543,19 @@ class $ChefMessageAcksTable extends ChefMessageAcks
       'message_id', aliasedName, false,
       type: DriftSqlType.int,
       requiredDuringInsert: true,
-      $customConstraints: 'NOT NULL REFERENCES chef_messages(id)');
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'REFERENCES chef_messages (id) ON DELETE CASCADE'));
   static const VerificationMeta _trigrammeMeta =
       const VerificationMeta('trigramme');
   @override
   late final GeneratedColumn<String> trigramme = GeneratedColumn<String>(
       'trigramme', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 1, maxTextLength: 10),
-      type: DriftSqlType.string,
-      requiredDuringInsert: true);
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _uidMeta = const VerificationMeta('uid');
+  @override
+  late final GeneratedColumn<String> uid = GeneratedColumn<String>(
+      'uid', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _seenAtMeta = const VerificationMeta('seenAt');
   @override
   late final GeneratedColumn<DateTime> seenAt = GeneratedColumn<DateTime>(
@@ -1458,7 +1564,7 @@ class $ChefMessageAcksTable extends ChefMessageAcks
       requiredDuringInsert: false,
       defaultValue: currentDateAndTime);
   @override
-  List<GeneratedColumn> get $columns => [id, messageId, trigramme, seenAt];
+  List<GeneratedColumn> get $columns => [id, messageId, trigramme, uid, seenAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1484,6 +1590,10 @@ class $ChefMessageAcksTable extends ChefMessageAcks
     } else if (isInserting) {
       context.missing(_trigrammeMeta);
     }
+    if (data.containsKey('uid')) {
+      context.handle(
+          _uidMeta, uid.isAcceptableOrUnknown(data['uid']!, _uidMeta));
+    }
     if (data.containsKey('seen_at')) {
       context.handle(_seenAtMeta,
           seenAt.isAcceptableOrUnknown(data['seen_at']!, _seenAtMeta));
@@ -1494,6 +1604,10 @@ class $ChefMessageAcksTable extends ChefMessageAcks
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+        {messageId, trigramme},
+      ];
+  @override
   ChefMessageAck map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return ChefMessageAck(
@@ -1503,6 +1617,8 @@ class $ChefMessageAcksTable extends ChefMessageAcks
           .read(DriftSqlType.int, data['${effectivePrefix}message_id'])!,
       trigramme: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}trigramme'])!,
+      uid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}uid']),
       seenAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}seen_at'])!,
     );
@@ -1518,11 +1634,13 @@ class ChefMessageAck extends DataClass implements Insertable<ChefMessageAck> {
   final int id;
   final int messageId;
   final String trigramme;
+  final String? uid;
   final DateTime seenAt;
   const ChefMessageAck(
       {required this.id,
       required this.messageId,
       required this.trigramme,
+      this.uid,
       required this.seenAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1530,6 +1648,9 @@ class ChefMessageAck extends DataClass implements Insertable<ChefMessageAck> {
     map['id'] = Variable<int>(id);
     map['message_id'] = Variable<int>(messageId);
     map['trigramme'] = Variable<String>(trigramme);
+    if (!nullToAbsent || uid != null) {
+      map['uid'] = Variable<String>(uid);
+    }
     map['seen_at'] = Variable<DateTime>(seenAt);
     return map;
   }
@@ -1539,6 +1660,7 @@ class ChefMessageAck extends DataClass implements Insertable<ChefMessageAck> {
       id: Value(id),
       messageId: Value(messageId),
       trigramme: Value(trigramme),
+      uid: uid == null && nullToAbsent ? const Value.absent() : Value(uid),
       seenAt: Value(seenAt),
     );
   }
@@ -1550,6 +1672,7 @@ class ChefMessageAck extends DataClass implements Insertable<ChefMessageAck> {
       id: serializer.fromJson<int>(json['id']),
       messageId: serializer.fromJson<int>(json['messageId']),
       trigramme: serializer.fromJson<String>(json['trigramme']),
+      uid: serializer.fromJson<String?>(json['uid']),
       seenAt: serializer.fromJson<DateTime>(json['seenAt']),
     );
   }
@@ -1560,16 +1683,22 @@ class ChefMessageAck extends DataClass implements Insertable<ChefMessageAck> {
       'id': serializer.toJson<int>(id),
       'messageId': serializer.toJson<int>(messageId),
       'trigramme': serializer.toJson<String>(trigramme),
+      'uid': serializer.toJson<String?>(uid),
       'seenAt': serializer.toJson<DateTime>(seenAt),
     };
   }
 
   ChefMessageAck copyWith(
-          {int? id, int? messageId, String? trigramme, DateTime? seenAt}) =>
+          {int? id,
+          int? messageId,
+          String? trigramme,
+          Value<String?> uid = const Value.absent(),
+          DateTime? seenAt}) =>
       ChefMessageAck(
         id: id ?? this.id,
         messageId: messageId ?? this.messageId,
         trigramme: trigramme ?? this.trigramme,
+        uid: uid.present ? uid.value : this.uid,
         seenAt: seenAt ?? this.seenAt,
       );
   @override
@@ -1578,13 +1707,14 @@ class ChefMessageAck extends DataClass implements Insertable<ChefMessageAck> {
           ..write('id: $id, ')
           ..write('messageId: $messageId, ')
           ..write('trigramme: $trigramme, ')
+          ..write('uid: $uid, ')
           ..write('seenAt: $seenAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, messageId, trigramme, seenAt);
+  int get hashCode => Object.hash(id, messageId, trigramme, uid, seenAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1592,6 +1722,7 @@ class ChefMessageAck extends DataClass implements Insertable<ChefMessageAck> {
           other.id == this.id &&
           other.messageId == this.messageId &&
           other.trigramme == this.trigramme &&
+          other.uid == this.uid &&
           other.seenAt == this.seenAt);
 }
 
@@ -1599,17 +1730,20 @@ class ChefMessageAcksCompanion extends UpdateCompanion<ChefMessageAck> {
   final Value<int> id;
   final Value<int> messageId;
   final Value<String> trigramme;
+  final Value<String?> uid;
   final Value<DateTime> seenAt;
   const ChefMessageAcksCompanion({
     this.id = const Value.absent(),
     this.messageId = const Value.absent(),
     this.trigramme = const Value.absent(),
+    this.uid = const Value.absent(),
     this.seenAt = const Value.absent(),
   });
   ChefMessageAcksCompanion.insert({
     this.id = const Value.absent(),
     required int messageId,
     required String trigramme,
+    this.uid = const Value.absent(),
     this.seenAt = const Value.absent(),
   })  : messageId = Value(messageId),
         trigramme = Value(trigramme);
@@ -1617,12 +1751,14 @@ class ChefMessageAcksCompanion extends UpdateCompanion<ChefMessageAck> {
     Expression<int>? id,
     Expression<int>? messageId,
     Expression<String>? trigramme,
+    Expression<String>? uid,
     Expression<DateTime>? seenAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (messageId != null) 'message_id': messageId,
       if (trigramme != null) 'trigramme': trigramme,
+      if (uid != null) 'uid': uid,
       if (seenAt != null) 'seen_at': seenAt,
     });
   }
@@ -1631,11 +1767,13 @@ class ChefMessageAcksCompanion extends UpdateCompanion<ChefMessageAck> {
       {Value<int>? id,
       Value<int>? messageId,
       Value<String>? trigramme,
+      Value<String?>? uid,
       Value<DateTime>? seenAt}) {
     return ChefMessageAcksCompanion(
       id: id ?? this.id,
       messageId: messageId ?? this.messageId,
       trigramme: trigramme ?? this.trigramme,
+      uid: uid ?? this.uid,
       seenAt: seenAt ?? this.seenAt,
     );
   }
@@ -1652,6 +1790,9 @@ class ChefMessageAcksCompanion extends UpdateCompanion<ChefMessageAck> {
     if (trigramme.present) {
       map['trigramme'] = Variable<String>(trigramme.value);
     }
+    if (uid.present) {
+      map['uid'] = Variable<String>(uid.value);
+    }
     if (seenAt.present) {
       map['seen_at'] = Variable<DateTime>(seenAt.value);
     }
@@ -1664,6 +1805,7 @@ class ChefMessageAcksCompanion extends UpdateCompanion<ChefMessageAck> {
           ..write('id: $id, ')
           ..write('messageId: $messageId, ')
           ..write('trigramme: $trigramme, ')
+          ..write('uid: $uid, ')
           ..write('seenAt: $seenAt')
           ..write(')'))
         .toString();
@@ -2615,4 +2757,16 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         notifications,
         airports
       ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
+        [
+          WritePropagation(
+            on: TableUpdateQuery.onTableName('chef_messages',
+                limitUpdateKind: UpdateKind.delete),
+            result: [
+              TableUpdate('chef_message_acks', kind: UpdateKind.delete),
+            ],
+          ),
+        ],
+      );
 }

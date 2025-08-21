@@ -82,6 +82,12 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
     );
   }
 
+  // pour filtrage des missions antérieures à la date du jour
+  bool _isSameOrAfterToday(DateTime d, DateTime todayStart) {
+    final missionDay = DateTime(d.year, d.month, d.day); // tronqué à 00:00
+    return !missionDay.isBefore(todayStart);
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -106,14 +112,17 @@ class _HomeDashboardState extends State<HomeDashboard> with WidgetsBindingObserv
                 }
                 final allMissions = snapshot.data ?? [];
                 final now = DateTime.now();
-                final upcomingMissions = allMissions
-                    .where((m) => m.date.isAfter(now))
+                final todayStart = DateTime(now.year, now.month, now.day);
+                final filtered = allMissions
+                    .where((m) => _isSameOrAfterToday(m.date, todayStart))
                     .toList()
                   ..sort((a, b) => a.date.compareTo(b.date));
-                final display = upcomingMissions.take(5).toList();
+                final display = filtered.take(5).toList();
+
                 if (display.isEmpty) {
                   return const Center(child: Text('Aucune mission à venir'));
                 }
+
                 return RefreshIndicator(
                   onRefresh: () async => setState(() {}),
                   child: ListView.builder(
