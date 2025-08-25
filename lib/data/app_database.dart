@@ -16,6 +16,8 @@ import 'mission_dao.dart';
 import 'planning_dao.dart';
 import 'chef_message_dao.dart';
 import 'notification_dao.dart';
+import 'organigramme_tables.dart';
+import 'organigramme_dao.dart';
 part 'app_database.g.dart';
 
 /// Table des utilisateurs
@@ -70,8 +72,9 @@ class PlanningEvents extends Table {
   DateTimeColumn get dateEnd     => dateTime()();
 
   // Synchro Firestore
-  TextColumn     get uid         => text().withLength(min: 1, max: 64)
-      .withDefault(const Constant(''))();
+  TextColumn get uid => text().nullable()();
+  //TextColumn     get uid         => text().withLength(min: 1, max: 64)
+      //.withDefault(const Constant(''))();
   TextColumn     get firestoreId => text().nullable()();
 
   // Rang TWR (1,2,3). Nullable car inutile pour les autres types.
@@ -160,12 +163,14 @@ class Airports extends Table {
     ChefMessages,
     Notifications,
     Airports,
+    OrganigrammeNodes,
   ],
   daos: [
     MissionDao,
     PlanningDao,
     ChefMessageDao,
     NotificationDao,
+    OrganigrammeDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {

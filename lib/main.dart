@@ -18,6 +18,8 @@ import 'firebase_options.dart'; //Target of URI doesn't exist: 'firebase_options
 import 'data/app_database.dart' hide User;
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; //Target of URI doesn't exist: 'package:flutter_localizations/flutter_localizations.dart'.
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +47,16 @@ class AppGAP extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'appGAP',
+      locale: const Locale('fr', 'FR'),   // <--- impose FR
+      supportedLocales: const [
+        Locale('fr', 'FR'),              // FR
+        Locale('en', 'US'),              // tu peux garder l’anglais en backup
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.blue),
       home: AuthGate(db: db),

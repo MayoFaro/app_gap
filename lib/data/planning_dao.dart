@@ -1,18 +1,13 @@
 // File: lib/data/planning_dao.dart
 //
-// DAO Planning : accès local (Drift) + push Firestore, avec helpers
-// compatibles avec l’UI existante (insertEvent/updateEventByFirestoreId/
-// deleteEventByFirestoreId).
+// DAO Planning : accès local (Drift) + push Firestore + helpers UI
+// Contrat Firestore verrouillé :
+//   - user = TRIGRAMME (canonique, 3 lettres, UPPERCASE)
+//   - trigramme = TRIGRAMME (miroir de user)
+//   - uid = Firebase UID (toujours non vide)
+//   - typeEvent, dateStart, dateEnd, rank?, createdAt, updatedAt
 //
-// Points clés :
-// - Correction du bug de type sur copyWith(rank: Value(...)).
-// - Réintroduction des 3 méthodes attendues par planning_list.dart.
-// - Déduction automatique de l’UID via FirebaseAuth (pas besoin de
-//   modifier les écrans).
-//
-// Note d’architecture : on garde ici le push Firestore pour rester
-// cohérent avec MissionDao. Si tu veux, on déplacera plus tard ces
-// appels réseau dans SyncService.
+// IMPORTANT : on n’écrit JAMAIS user=UID. Toujours user=trigramme et trigramme=trigramme.
 
 import 'package:drift/drift.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as fs;
@@ -38,11 +33,13 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   // Utils
   // ---------------------------------------------------------------------------
 
-  /// Récupère l'UID courant (sécurité : jamais vide).
+  /// UID Firebase courant (fallback 'unknown' si non connecté)
   String _currentUid() =>
       auth.FirebaseAuth.instance.currentUser?.uid?.trim().isNotEmpty == true
           ? auth.FirebaseAuth.instance.currentUser!.uid
           : 'unknown';
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   // ---------------------------------------------------------------------------
   // CRUD LOCAL (simples)
@@ -57,15 +54,12 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
       (select(planningEvents)..where((t) => t.firestoreId.equals(firestoreId)))
           .getSingleOrNull();
 
-  /// Insert local simple (sans réseau)
   Future<int> insertLocal(PlanningEventsCompanion comp) =>
       into(planningEvents).insert(comp);
 
-  /// Update local simple (sans réseau)
   Future<int> updateLocal(int id, PlanningEventsCompanion comp) =>
       (update(planningEvents)..where((t) => t.id.equals(id))).write(comp);
 
-  /// Delete local simple (sans réseau)
   Future<void> deleteLocal(int id) async {
     await (delete(planningEvents)..where((t) => t.id.equals(id))).go();
   }
@@ -74,8 +68,6 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   // QUERIES D'AFFICHAGE (UI)
   // ---------------------------------------------------------------------------
 
-  /// Retourne les events qui **chevauchent** la journée `day`:
-  /// [dateEnd] >= startOfDay && [dateStart] < endOfDay
   Future<List<PlanningEvent>> getForDay(DateTime day, {String? forUser}) async {
     final start = DateTime(day.year, day.month, day.day);
     final end = start.add(const Duration(days: 1));
@@ -96,7 +88,6 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     return q.get();
   }
 
-  /// Stream des events qui chevauchent la journée `day`
   Stream<List<PlanningEvent>> watchDay(DateTime day, {String? forUser}) {
     final start = DateTime(day.year, day.month, day.day);
     final end = start.add(const Duration(days: 1));
@@ -117,7 +108,6 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     return q.watch();
   }
 
-  /// Retourne les events qui chevauchent [start, end[
   Future<List<PlanningEvent>> getForRange(DateTime start, DateTime end,
       {String? forUser}) {
     final q = select(planningEvents)
@@ -136,7 +126,6 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     return q.get();
   }
 
-  /// Stream des events qui chevauchent [start, end[
   Stream<List<PlanningEvent>> watchRange(DateTime start, DateTime end,
       {String? forUser}) {
     final q = select(planningEvents)
@@ -155,7 +144,6 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     return q.watch();
   }
 
-  /// Tous les events d’un utilisateur (tri standard)
   Future<List<PlanningEvent>> getForUser(String trigram) {
     return (select(planningEvents)
       ..where((t) => t.user.equals(trigram.toUpperCase()))
@@ -167,12 +155,190 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   }
 
   // ---------------------------------------------------------------------------
-  // SYNC FIRESTORE (PUSH) — créations / mises à jour / suppressions
+  // AJOUTS POUR MOTEUR/OUTILS
   // ---------------------------------------------------------------------------
 
-  /// Crée un event local **et** le pousse dans Firestore.
-  /// - Si pas de réseau, l'insert Firestore lèvera.
-  /// - `uidDefault` est utilisé si `row.uid` est vide (sécurité).
+  /// Tous les events chevauchant [start, end[ pour une liste de trigrammes.
+  Future<List<PlanningEvent>> fetchEventsForUsersInRange({
+    required List<String> userTrigrams,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    if (userTrigrams.isEmpty) return <PlanningEvent>[];
+    final upper = userTrigrams.map((e) => e.toUpperCase()).toList();
+
+    final q = select(planningEvents)
+      ..where((t) =>
+      t.dateEnd.isBiggerOrEqualValue(start) &
+      t.dateStart.isSmallerThanValue(end) &
+      t.user.isIn(upper))
+      ..orderBy([
+            (t) => OrderingTerm.asc(t.dateStart),
+            (t) => OrderingTerm.asc(t.rank),
+      ]);
+
+    return q.get();
+  }
+
+  /// Insère des events jour par jour **si la cellule est vide** (pas d’écrasement).
+  Future<void> insertDailyEventsIfEmpty(
+      List<({String user, DateTime day, String typeEvent, int? rank})> items,
+      ) async {
+    for (final it in items) {
+      final userUp = it.user.toUpperCase();
+      final start = _dateOnly(it.day);
+      final end = start.add(const Duration(days: 1));
+
+      final q = select(planningEvents)
+        ..where((t) =>
+        t.user.equals(userUp) &
+        t.dateEnd.isBiggerOrEqualValue(start) &
+        t.dateStart.isSmallerThanValue(end));
+      final existing = await q.get();
+      if (existing.isNotEmpty) continue;
+
+      final comp = PlanningEventsCompanion.insert(
+        user: userUp,
+        typeEvent: it.typeEvent,
+        dateStart: start,
+        dateEnd: end,
+        rank: Value(it.rank),
+      );
+      await createAndPush(comp, uidDefault: _currentUid());
+    }
+  }
+
+  /// Supprime tous les 'AST' chevauchant [start, end[ pour une liste de trigrammes.
+  Future<void> deleteAstInRange({
+    required List<String> userTrigrams,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    if (userTrigrams.isEmpty) return;
+
+    final upper = userTrigrams.map((e) => e.toUpperCase()).toList();
+
+    final q = select(planningEvents)
+      ..where((t) =>
+      t.dateEnd.isBiggerOrEqualValue(start) &
+      t.dateStart.isSmallerThanValue(end) &
+      t.user.isIn(upper) &
+      t.typeEvent.equals('AST'))
+      ..orderBy([
+            (t) => OrderingTerm.asc(t.dateStart),
+            (t) => OrderingTerm.asc(t.rank),
+      ]);
+
+    final rows = await q.get();
+    for (final row in rows) {
+      await deleteAndPush(row.id);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PULL FIRESTORE -> LOCAL (hydrate le cache)
+  // ---------------------------------------------------------------------------
+
+  /// Hydrate le cache local pour tous les events qui **chevauchent** [start, end[.
+  ///
+  /// Mapping trigramme :
+  ///   - si `trigramme` (remote) existe et long==3 → on l’utilise (UPPERCASE).
+  ///   - sinon si `user` (remote) long==3 → on l’utilise (UPPERCASE).
+  ///   - sinon → SKIP + log (on ne peut pas déterminer le trigramme).
+  ///
+  /// On interroge Firestore avec `dateStart < end`, puis on filtre en mémoire `dateEnd >= start`.
+  Future<int> pullRangeFromRemote({
+    required DateTime start,
+    required DateTime end,
+    List<String>? trigramFilter,
+  }) async {
+    final startD = _dateOnly(start);
+    final endExcl = _dateOnly(end);
+    final endForQuery = endExcl;
+
+    final trigSet = trigramFilter?.map((e) => e.toUpperCase()).toSet();
+
+    final snap = await _remote
+        .where('dateStart', isLessThan: fs.Timestamp.fromDate(endForQuery))
+        .get();
+
+    int upserts = 0;
+
+    for (final doc in snap.docs) {
+      final data = doc.data();
+
+      final tsStart = data['dateStart'] as fs.Timestamp?;
+      final tsEnd = data['dateEnd'] as fs.Timestamp?;
+      if (tsStart == null || tsEnd == null) continue;
+
+      final dStart = tsStart.toDate();
+      final dEnd = tsEnd.toDate();
+
+      // chevauchement [start, end[
+      final overlaps =
+      !(dEnd.isBefore(startD) || !dStart.isBefore(endExcl));
+      if (!overlaps) continue;
+
+      // trigramme robuste
+      String? tri;
+      final trigField = (data['trigramme'] as String?)?.trim();
+      if (trigField != null && trigField.length == 3) {
+        tri = trigField.toUpperCase();
+      } else {
+        final userField = (data['user'] as String?)?.trim();
+        if (userField != null && userField.length == 3) {
+          tri = userField.toUpperCase();
+        }
+      }
+      if (tri == null) {
+        debugPrint("PULL[skip] ${doc.id}: trigramme introuvable (trigramme/user invalides).");
+        continue;
+      }
+
+      if (trigSet != null && !trigSet.contains(tri)) continue;
+
+      final typeEvent = ((data['typeEvent'] as String?) ?? 'UNK').trim();
+      final uid = ((data['uid'] as String?) ?? '').trim();
+      final rankRaw = data['rank'];
+      final rankVal = (rankRaw is int) ? rankRaw : null;
+
+      // upsert local par firestoreId
+      final existing = await getByFirestoreId(doc.id);
+      if (existing == null) {
+        final comp = PlanningEventsCompanion.insert(
+          user: tri,
+          typeEvent: typeEvent,
+          dateStart: dStart,
+          dateEnd: dEnd,
+          rank: Value(rankVal),
+        ).copyWith(
+          uid: Value(uid),
+          firestoreId: Value(doc.id),
+        );
+        await insertLocal(comp);
+        upserts++;
+      } else {
+        await updateLocal(existing.id, PlanningEventsCompanion(
+          user: Value(tri),
+          typeEvent: Value(typeEvent),
+          dateStart: Value(dStart),
+          dateEnd: Value(dEnd),
+          uid: Value(uid),
+          rank: Value(rankVal ?? existing.rank),
+        ));
+        upserts++;
+      }
+    }
+
+    debugPrint("PULL[planning] upserts=$upserts (range ${startD.toIso8601String()} .. ${endExcl.toIso8601String()})");
+    return upserts;
+  }
+
+  // ---------------------------------------------------------------------------
+  // SYNC FIRESTORE (PUSH)
+  // ---------------------------------------------------------------------------
+
+  /// Crée local + pousse Firestore, en écrivant **user=trigramme**, **trigramme=trigramme**, **uid non vide**.
   Future<String> createAndPush(PlanningEventsCompanion comp,
       {required String uidDefault}) async {
     // 1) Insert local
@@ -185,7 +351,7 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     final ref =
     await _remote.add(_toRemoteCreateMap(row, uidDefault: uidDefault));
 
-    // 3) Rattache le firestoreId localement
+    // 3) Rattache l'ID
     await (update(planningEvents)..where((t) => t.id.equals(localId))).write(
       PlanningEventsCompanion(firestoreId: Value(ref.id)),
     );
@@ -194,8 +360,7 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     return ref.id;
   }
 
-  /// Met à jour un event local **et** pousse la mise à jour dans Firestore.
-  /// - Si l'event n'a pas encore de firestoreId → bascule en create.
+  /// Met à jour local + Firestore (création si besoin).
   Future<void> updateAndPush(int id, PlanningEventsCompanion comp,
       {required String uidDefault}) async {
     final existing =
@@ -208,13 +373,9 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
 
     // 2) Push remote
     if (existing.firestoreId == null) {
-      // Pas encore dans Firestore → create
       final ref = await _remote.add(
         _toRemoteCreateMap(
-          // IMPORTANT : pour les champs nullable (ex: rank),
-          // copyWith attend un Value<int?>.
           existing.copyWith(
-            // on fabrique une "vue" locale mise à jour à partir de comp
             user: comp.user.present ? comp.user.value : existing.user,
             typeEvent:
             comp.typeEvent.present ? comp.typeEvent.value : existing.typeEvent,
@@ -237,7 +398,6 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
       );
       debugPrint("SYNC[upsert->create][planning]: ${ref.id}");
     } else {
-      // déjà en Firestore → update
       await _remote.doc(existing.firestoreId!).set(
         _toRemoteUpdateMap(
           await (select(planningEvents)..where((t) => t.id.equals(id)))
@@ -250,24 +410,20 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     }
   }
 
-  /// Supprime local + Firestore (si firestoreId présent)
   Future<void> deleteAndPush(int id) async {
     final row =
     await (select(planningEvents)..where((t) => t.id.equals(id)))
         .getSingleOrNull();
     if (row == null) return;
 
-    // Supprime local
     await (delete(planningEvents)..where((t) => t.id.equals(id))).go();
 
-    // Supprime Firestore si sync
     if (row.firestoreId != null) {
       await _remote.doc(row.firestoreId!).delete();
       debugPrint("SYNC[delete][planning]: ${row.firestoreId}");
     }
   }
 
-  /// Synchronise **uniquement les créations locales** (lignes sans firestoreId).
   Future<void> syncPendingPlanningEvents({required String uidDefault}) async {
     final pending = await (select(planningEvents)
       ..where((t) => t.firestoreId.isNull()))
@@ -286,8 +442,6 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   // API DE COMPATIBILITÉ AVEC L’UI EXISTANTE
   // ---------------------------------------------------------------------------
 
-  /// Insère un event (local + Firestore).
-  /// Signature conservée pour `planning_list.dart`.
   Future<String> insertEvent({
     required String user,
     required String typeEvent,
@@ -300,14 +454,13 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
       typeEvent: typeEvent,
       dateStart: dateStart,
       dateEnd: dateEnd,
-      //uid: _currentUid(), // The argument type 'String' can't be assigned to the parameter type 'Value<String>'.
       rank: Value(rank),
     );
     return createAndPush(comp, uidDefault: _currentUid());
   }
 
-  /// Met à jour (dates/rank) par firestoreId (local + Firestore).
-  /// Signature conservée pour `planning_list.dart`.
+  /// ✅ Corrigé : met à jour **uniquement** dateStart/dateEnd/rank côté Firestore si la ligne locale est manquante,
+  /// sans jamais pousser un typeEvent 'UNK'. Puis (re)construit proprement la ligne locale depuis le doc Firestore.
   Future<void> updateEventByFirestoreId({
     required String firestoreId,
     required DateTime dateStart,
@@ -316,19 +469,10 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   }) async {
     final row = await getByFirestoreId(firestoreId);
 
-    if (row == null) {
-      // Cas de robustesse (rare) : si la ligne locale a disparu,
-      // on recrée une ligne locale minimale pour garder l’UI cohérente.
-      final tempId = await insertLocal(PlanningEventsCompanion.insert(
-        user: '---', // inconnu (on ne l’a pas), l’UI recharge ensuite
-        typeEvent: 'UNK',
-        dateStart: dateStart,
-        dateEnd: dateEnd,
-        rank: Value(rank),
-        // et on colle le firestoreId connu
-      ).copyWith(firestoreId: Value(firestoreId)));
+    if (row != null) {
+      // Cas standard : on garde le pipeline local->remote existant.
       await updateAndPush(
-        tempId,
+        row.id,
         PlanningEventsCompanion(
           dateStart: Value(dateStart),
           dateEnd: Value(dateEnd),
@@ -339,52 +483,86 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
       return;
     }
 
-    await updateAndPush(
-      row.id,
-      PlanningEventsCompanion(
-        dateStart: Value(dateStart),
-        dateEnd: Value(dateEnd),
-        rank: Value(rank),
+    // ⚠️ Cas "ligne locale manquante" :
+    // 1) PATCH MINIMAL côté Firestore (merge), pour ne pas toucher typeEvent/user/trigramme
+    await _remote.doc(firestoreId).set({
+      'dateStart': fs.Timestamp.fromDate(dateStart),
+      'dateEnd'  : fs.Timestamp.fromDate(dateEnd),
+      if (rank != null) 'rank': rank,
+      'updatedAt': fs.FieldValue.serverTimestamp(),
+    }, fs.SetOptions(merge: true));
+
+    // 2) Relire le doc Firestore pour reconstruire une ligne locale propre
+    final snap = await _remote.doc(firestoreId).get();
+    if (!snap.exists) {
+      debugPrint("UPDATE[planning] doc $firestoreId introuvable après patch.");
+      return;
+    }
+    final data = snap.data()!;
+    final typeEvent = (data['typeEvent'] as String?)?.trim() ?? 'UNK';
+    final uid = (data['uid'] as String?)?.trim() ?? '';
+    final rankRaw = data['rank'];
+    final rankVal = (rankRaw is int) ? rankRaw : null;
+
+    String tri;
+    final trigField = (data['trigramme'] as String?)?.trim();
+    if (trigField != null && trigField.length == 3) {
+      tri = trigField.toUpperCase();
+    } else {
+      final userField = (data['user'] as String?)?.trim() ?? '';
+      tri = (userField.length == 3 ? userField.toUpperCase() : '---');
+    }
+
+    // 3) (Ré)insérer une ligne locale propre, **sans** renvoyer une écriture réseau parasite.
+    await insertLocal(
+      PlanningEventsCompanion.insert(
+        user: tri,
+        typeEvent: typeEvent,
+        dateStart: dateStart,
+        dateEnd: dateEnd,
+        rank: Value(rank ?? rankVal),
+      ).copyWith(
+        uid: Value(uid),
+        firestoreId: Value(firestoreId),
       ),
-      uidDefault: _currentUid(),
     );
   }
 
-  /// Supprime par firestoreId (local + Firestore).
-  /// Signature conservée pour `planning_list.dart`.
   Future<void> deleteEventByFirestoreId(String firestoreId) async {
     final row = await getByFirestoreId(firestoreId);
     if (row != null) {
       await deleteAndPush(row.id);
       return;
     }
-    // Si pas de ligne locale, on supprime au moins le remote.
     await _remote.doc(firestoreId).delete();
     debugPrint("SYNC[delete][planning]: $firestoreId (local manquant)");
   }
 
   // ---------------------------------------------------------------------------
-  // HELPERS DE MAPPING
+  // HELPERS DE MAPPING (écriture Firestore)
   // ---------------------------------------------------------------------------
 
+  /// Map de création Firestore garantissant `user=trigramme`, `trigramme=trigramme`, `uid` non vide.
   Map<String, dynamic> _toRemoteCreateMap(PlanningEvent e,
       {required String uidDefault}) =>
       {
-        'user': e.user, // trigramme
+        'user': e.user,              // TRIGRAMME (canonique)
+        'trigramme': e.user,         // miroir
         'typeEvent': e.typeEvent,
         'dateStart': fs.Timestamp.fromDate(e.dateStart),
         'dateEnd': fs.Timestamp.fromDate(e.dateEnd),
-        // uid non vide sinon fallback uidDefault
         'uid': (e.uid.isNotEmpty ? e.uid : uidDefault),
         if (e.rank != null) 'rank': e.rank,
         'createdAt': fs.FieldValue.serverTimestamp(),
         'updatedAt': fs.FieldValue.serverTimestamp(),
       };
 
+  /// Map d’update Firestore gardant le même contrat.
   Map<String, dynamic> _toRemoteUpdateMap(PlanningEvent e,
       {required String uidDefault}) =>
       {
-        'user': e.user,
+        'user': e.user,              // TRIGRAMME
+        'trigramme': e.user,         // miroir
         'typeEvent': e.typeEvent,
         'dateStart': fs.Timestamp.fromDate(e.dateStart),
         'dateEnd': fs.Timestamp.fromDate(e.dateEnd),

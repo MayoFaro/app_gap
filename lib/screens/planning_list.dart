@@ -1,20 +1,13 @@
 // lib/screens/planning_list.dart
 //
-// + Appui long sur une case ayant un event (du user courant) → Éditer / Supprimer
-//   - 1 jour : date picker (+ rank 1/2/3 si TWR)
-//   - multi-jours : showDateRangePicker
-//   - suppression : ferme le dialog avant l'action pour éviter le double clic sur un doc déjà supprimé
-// Restauration d’offset pour ne pas retomber au 01/01.
+// Lecture des events désormais via DAO (pullRangeFromRemote -> getForRange),
+// pour garantir le contrat user=TRI / trigramme=TRI / uid séparé.
 //
-// Correctifs (2025-08-21):
-// - Tri alphabétique fiable des trigrammes: normalisation (trim + upper), déduplication, tri.
-// - Suppression de l'entrée '---' dans la colonne des trigrammes.
-// - Logs de diagnostic pour comprendre pourquoi un trigramme (ex: PVT) se place en tête.
-// - Lecture d'events Firestore robuste: accepte user = uid (ancien) OU user = trigramme (nouveau).
+// + Appui long sur une case ayant un event (du user courant) → Éditer / Supprimer
+// + Restauration d’offset pour ne pas retomber au 01/01.
 
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:horizontal_data_table/horizontal_data_table.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,13 +65,11 @@ class _PlanningListState extends State<PlanningList> {
   String _normTri(String s) => s.trim().toUpperCase();
 
   void _logUsersOrder(String stage) {
-    // Liste triée et quelques infos pour diagnostiquer le "PVT en tête"
     debugPrint("PLANNING[users][$stage] count=${_users.length}");
     if (_users.isNotEmpty) {
       debugPrint("PLANNING[users][$stage] first='${_users.first}' codeUnits=${_users.first.codeUnits}");
       final idxPvt = _users.indexOf('PVT');
       debugPrint("PLANNING[users][$stage] indexOf('PVT')=$idxPvt");
-      // Montre les 15 premiers pour un coup d’œil rapide
       final preview = _users.take(15).join(', ');
       debugPrint("PLANNING[users][$stage] head15=[$preview]");
     }
@@ -92,7 +83,6 @@ class _PlanningListState extends State<PlanningList> {
         .select(widget.dao.attachedDatabase.users)
         .get();
 
-    // Normalisation, déduplication, tri alpha
     final raw = usersRows
         .map((u) => (u.trigramme ?? '').toString())
         .where((s) => s.isNotEmpty)
@@ -108,77 +98,25 @@ class _PlanningListState extends State<PlanningList> {
 
     _eventsByUser = {for (var t in _users) t: []};
 
-    // 2) Map UID -> trigramme (Firestore /users)
-    //    (sert pour les anciens events où `planningEvents.user` = uid)
-    final userDocs =
-    await FirebaseFirestore.instance.collection('users').get();
-    final uidToTri = <String, String>{};
-    for (var d in userDocs.docs) {
-      final data = d.data();
-      final tri = data['trigramme'];
-      if (tri is String) uidToTri[d.id] = _normTri(tri);
+    // 2) PULL Firestore -> LOCAL sur l'année sélectionnée
+    final start = DateTime(_selectedYear, 1, 1);
+    final endExcl = DateTime(_selectedYear + 1, 1, 1); // borne exclusive
+    await widget.dao.pullRangeFromRemote(
+      start: start,
+      end: endExcl,
+      trigramFilter: _users,
+    );
+
+    // 3) Lecture LOCALE des events sur l'année
+    final events = await widget.dao.getForRange(start, endExcl);
+    for (final e in events) {
+      final tri = _normTri(e.user);
+      if (_eventsByUser.containsKey(tri)) {
+        _eventsByUser[tri]!.add(e);
+      }
     }
 
-    // 3) Events Firestore
-    //    Compatible ancien (user = uid) et nouveau (user = trigramme) schéma
-    final snap = await FirebaseFirestore.instance
-        .collection('planningEvents')
-        .get();
-
-    int usedAsUid = 0;
-    int usedAsTri = 0;
-    int skippedNoMatch = 0;
-
-    for (var doc in snap.docs) {
-      final data = doc.data();
-      final userField = data['user'] as String?;
-      final type = data['typeEvent'] as String?;
-      final tsStart = data['dateStart'] as Timestamp?;
-      final tsEnd = data['dateEnd'] as Timestamp?;
-      final rank = data['rank'];
-
-      if (userField == null || type == null || tsStart == null || tsEnd == null) {
-        continue;
-      }
-
-      // 3.a Essaie 1 : 'user' est déjà un trigramme
-      String? trig = _users.contains(_normTri(userField)) ? _normTri(userField) : null;
-      if (trig != null) {
-        usedAsTri++;
-      } else {
-        // 3.b Essaie 2 : 'user' est un uid, on mappe via /users
-        trig = uidToTri[userField];
-        if (trig != null) {
-          usedAsUid++;
-        } else {
-          skippedNoMatch++;
-          debugPrint("PLANNING[events] skip doc ${doc.id}: user='$userField' non résolu (ni trigramme, ni uid connu)");
-          continue;
-        }
-      }
-
-      // Si pour une raison quelconque l'utilisateur n'est pas dans la grille, on l'ignore
-      if (!_eventsByUser.containsKey(trig)) {
-        // On ne spam pas les logs, juste la première fois
-        debugPrint("PLANNING[events] trigram '$trig' non présent dans _users, event ignoré (doc=${doc.id})");
-        continue;
-      }
-
-      _eventsByUser[trig]!.add(
-        PlanningEvent(
-          id: 0,
-          user: trig,
-          typeEvent: type,
-          dateStart: tsStart.toDate(),
-          dateEnd: tsEnd.toDate(),
-          uid: data['uid'] is String ? (data['uid'] as String) : '',
-          firestoreId: doc.id,
-          rank: (rank is int) ? rank : null,
-        ),
-      );
-    }
-
-    debugPrint("PLANNING[events] mapped: asTri=$usedAsTri, asUid=$usedAsUid, skipped=$skippedNoMatch");
+    debugPrint("PLANNING[events] totalLocal=${events.length}");
 
     if (mounted) setState(() => _isReady = true);
   }
@@ -186,8 +124,7 @@ class _PlanningListState extends State<PlanningList> {
   Future<void> _loadTrigram() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _trigram = prefs.getString('userTrigram') ?? '---';
-      _trigram = _normTri(_trigram);
+      _trigram = _normTri(prefs.getString('userTrigram') ?? '---');
     });
   }
 
@@ -263,6 +200,7 @@ class _PlanningListState extends State<PlanningList> {
               setState(() {
                 _selectedYear = year;
                 _generateDays(year);
+                _isReady = false;
               });
               _preloadData();
             },
@@ -334,7 +272,7 @@ class _PlanningListState extends State<PlanningList> {
         final label = evt?.typeEvent ?? '';
         final bg = evt != null ? eventColors[evt.typeEvent] : null;
 
-        final canEdit = evt != null && evt.user == _trigram;
+        final canEdit = evt != null && _normTri(evt.user) == _trigram;
 
         return GestureDetector(
           onLongPress: canEdit ? () => _showEditDeleteDialog(context, evt!) : null,
@@ -580,7 +518,6 @@ class _PlanningListState extends State<PlanningList> {
           ),
           TextButton(
             onPressed: () async {
-              // 1) Fermer le dialog d’abord pour éviter un second clic sur un doc déjà supprimé
               Navigator.pop(context);
 
               try {
@@ -593,10 +530,8 @@ class _PlanningListState extends State<PlanningList> {
                 );
               }
 
-              // 2) Recharger l’écran
               await _preloadData();
 
-              // 3) Restaure l’offset horizontal si possible
               if (_hCtrl.hasClients) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   final max = _hCtrl.position.maxScrollExtent;
@@ -614,7 +549,6 @@ class _PlanningListState extends State<PlanningList> {
   }
 
   Future<void> _editOneDayEvent(PlanningEvent e) async {
-    // date initiale
     DateTime selected = DateTime(e.dateStart.year, e.dateStart.month, e.dateStart.day);
     int twrRank = e.typeEvent == 'TWR' ? (e.rank ?? 1) : 1;
 

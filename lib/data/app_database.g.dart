@@ -2728,6 +2728,233 @@ class AirportsCompanion extends UpdateCompanion<Airport> {
   }
 }
 
+class $OrganigrammeNodesTable extends OrganigrammeNodes
+    with TableInfo<$OrganigrammeNodesTable, OrganigrammeNode> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OrganigrammeNodesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _parentIdMeta =
+      const VerificationMeta('parentId');
+  @override
+  late final GeneratedColumn<String> parentId = GeneratedColumn<String>(
+      'parent_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [userId, parentId, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'organigramme_nodes';
+  @override
+  VerificationContext validateIntegrity(Insertable<OrganigrammeNode> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('parent_id')) {
+      context.handle(_parentIdMeta,
+          parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {userId};
+  @override
+  OrganigrammeNode map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OrganigrammeNode(
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
+      parentId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}parent_id']),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at']),
+    );
+  }
+
+  @override
+  $OrganigrammeNodesTable createAlias(String alias) {
+    return $OrganigrammeNodesTable(attachedDatabase, alias);
+  }
+}
+
+class OrganigrammeNode extends DataClass
+    implements Insertable<OrganigrammeNode> {
+  final String userId;
+  final String? parentId;
+  final DateTime? updatedAt;
+  const OrganigrammeNode({required this.userId, this.parentId, this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['user_id'] = Variable<String>(userId);
+    if (!nullToAbsent || parentId != null) {
+      map['parent_id'] = Variable<String>(parentId);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    return map;
+  }
+
+  OrganigrammeNodesCompanion toCompanion(bool nullToAbsent) {
+    return OrganigrammeNodesCompanion(
+      userId: Value(userId),
+      parentId: parentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentId),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+    );
+  }
+
+  factory OrganigrammeNode.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OrganigrammeNode(
+      userId: serializer.fromJson<String>(json['userId']),
+      parentId: serializer.fromJson<String?>(json['parentId']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'userId': serializer.toJson<String>(userId),
+      'parentId': serializer.toJson<String?>(parentId),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+    };
+  }
+
+  OrganigrammeNode copyWith(
+          {String? userId,
+          Value<String?> parentId = const Value.absent(),
+          Value<DateTime?> updatedAt = const Value.absent()}) =>
+      OrganigrammeNode(
+        userId: userId ?? this.userId,
+        parentId: parentId.present ? parentId.value : this.parentId,
+        updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+      );
+  @override
+  String toString() {
+    return (StringBuffer('OrganigrammeNode(')
+          ..write('userId: $userId, ')
+          ..write('parentId: $parentId, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(userId, parentId, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OrganigrammeNode &&
+          other.userId == this.userId &&
+          other.parentId == this.parentId &&
+          other.updatedAt == this.updatedAt);
+}
+
+class OrganigrammeNodesCompanion extends UpdateCompanion<OrganigrammeNode> {
+  final Value<String> userId;
+  final Value<String?> parentId;
+  final Value<DateTime?> updatedAt;
+  final Value<int> rowid;
+  const OrganigrammeNodesCompanion({
+    this.userId = const Value.absent(),
+    this.parentId = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OrganigrammeNodesCompanion.insert({
+    required String userId,
+    this.parentId = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : userId = Value(userId);
+  static Insertable<OrganigrammeNode> custom({
+    Expression<String>? userId,
+    Expression<String>? parentId,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (userId != null) 'user_id': userId,
+      if (parentId != null) 'parent_id': parentId,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OrganigrammeNodesCompanion copyWith(
+      {Value<String>? userId,
+      Value<String?>? parentId,
+      Value<DateTime?>? updatedAt,
+      Value<int>? rowid}) {
+    return OrganigrammeNodesCompanion(
+      userId: userId ?? this.userId,
+      parentId: parentId ?? this.parentId,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (parentId.present) {
+      map['parent_id'] = Variable<String>(parentId.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OrganigrammeNodesCompanion(')
+          ..write('userId: $userId, ')
+          ..write('parentId: $parentId, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   late final $UsersTable users = $UsersTable(this);
@@ -2738,12 +2965,16 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PlanningEventsTable planningEvents = $PlanningEventsTable(this);
   late final $NotificationsTable notifications = $NotificationsTable(this);
   late final $AirportsTable airports = $AirportsTable(this);
+  late final $OrganigrammeNodesTable organigrammeNodes =
+      $OrganigrammeNodesTable(this);
   late final MissionDao missionDao = MissionDao(this as AppDatabase);
   late final PlanningDao planningDao = PlanningDao(this as AppDatabase);
   late final ChefMessageDao chefMessageDao =
       ChefMessageDao(this as AppDatabase);
   late final NotificationDao notificationDao =
       NotificationDao(this as AppDatabase);
+  late final OrganigrammeDao organigrammeDao =
+      OrganigrammeDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2755,7 +2986,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         chefMessageAcks,
         planningEvents,
         notifications,
-        airports
+        airports,
+        organigrammeNodes
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(

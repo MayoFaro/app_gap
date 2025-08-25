@@ -1,4 +1,5 @@
 // lib/screens/home_screen.dart
+import 'package:appgap/screens/planning_events_uid_migrator.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fbAuth;
 import 'package:flutter/material.dart' hide Notification;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +11,7 @@ import '../data/planning_dao.dart';
 import '../data/chef_message_dao.dart';
 import '../data/notification_dao.dart';
 
+import 'AstreinteGeneratorScreen.dart';
 import 'home_dashboard.dart';
 import 'missions_list.dart';
 import 'missions_helico_list.dart';
@@ -21,6 +23,9 @@ import 'tripfuel_screen.dart';
 import 'notifications_screen.dart';
 import 'chef_messages_list.dart';
 import 'auth_screen.dart';
+import 'planning_events_migrator.dart';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Écran racine après authentification.
 /// - Charge le contexte utilisateur depuis SharedPreferences
@@ -305,6 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(color: Colors.white, fontSize: 24),
               ),
             ),
+
             ListTile(
               leading: const Icon(Icons.home),
               title: const Text('Accueil'),
@@ -314,6 +320,21 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.list),
               title: const Text('Missions Hebdo'),
               onTap: () => _onItemTapped(1),
+            ),
+            ListTile(
+              leading: const Icon(Icons.schedule),
+              title: const Text('Astreintes opérationnelles'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AstreinteGeneratorScreen(
+                      db: widget.db,
+                      planningDao: PlanningDao(widget.db),
+                    ),
+                  ),
+                );
+              },
             ),
             ListTile(
               leading: const Icon(Icons.flight),
@@ -422,9 +443,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
+            // 🔴 BOUTON TEMPORAIRE ADMIN : Normaliser planningEvents
+            if (widget.isAdmin)
+              ListTile(
+                leading: const Icon(Icons.build),
+                title: const Text('Migration UID planningEvents'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PlanningEventsUidMigrator(dryRun: false),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),
+
+
     );
   }
 }
