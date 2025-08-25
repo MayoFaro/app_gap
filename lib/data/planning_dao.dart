@@ -35,7 +35,9 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
 
   /// UID Firebase courant (fallback 'unknown' si non connecté)
   String _currentUid() =>
-      auth.FirebaseAuth.instance.currentUser?.uid?.trim().isNotEmpty == true
+      auth.FirebaseAuth.instance.currentUser?.uid
+          ?.trim()
+          .isNotEmpty == true
           ? auth.FirebaseAuth.instance.currentUser!.uid
           : 'unknown';
 
@@ -48,20 +50,24 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   Future<List<PlanningEvent>> getAll() => select(planningEvents).get();
 
   Future<PlanningEvent?> getById(int id) =>
-      (select(planningEvents)..where((t) => t.id.equals(id))).getSingleOrNull();
+      (select(planningEvents)
+        ..where((t) => t.id.equals(id))).getSingleOrNull();
 
   Future<PlanningEvent?> getByFirestoreId(String firestoreId) =>
-      (select(planningEvents)..where((t) => t.firestoreId.equals(firestoreId)))
+      (select(planningEvents)
+        ..where((t) => t.firestoreId.equals(firestoreId)))
           .getSingleOrNull();
 
   Future<int> insertLocal(PlanningEventsCompanion comp) =>
       into(planningEvents).insert(comp);
 
   Future<int> updateLocal(int id, PlanningEventsCompanion comp) =>
-      (update(planningEvents)..where((t) => t.id.equals(id))).write(comp);
+      (update(planningEvents)
+        ..where((t) => t.id.equals(id))).write(comp);
 
   Future<void> deleteLocal(int id) async {
-    await (delete(planningEvents)..where((t) => t.id.equals(id))).go();
+    await (delete(planningEvents)
+      ..where((t) => t.id.equals(id))).go();
   }
 
   // ---------------------------------------------------------------------------
@@ -181,9 +187,8 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// Insère des events jour par jour **si la cellule est vide** (pas d’écrasement).
-  Future<void> insertDailyEventsIfEmpty(
-      List<({String user, DateTime day, String typeEvent, int? rank})> items,
-      ) async {
+  Future<void> insertDailyEventsIfEmpty(List<
+      ({String user, DateTime day, String typeEvent, int? rank})> items,) async {
     for (final it in items) {
       final userUp = it.user.toUpperCase();
       final start = _dateOnly(it.day);
@@ -291,7 +296,8 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
         }
       }
       if (tri == null) {
-        debugPrint("PULL[skip] ${doc.id}: trigramme introuvable (trigramme/user invalides).");
+        debugPrint("PULL[skip] ${doc
+            .id}: trigramme introuvable (trigramme/user invalides).");
         continue;
       }
 
@@ -330,7 +336,8 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
       }
     }
 
-    debugPrint("PULL[planning] upserts=$upserts (range ${startD.toIso8601String()} .. ${endExcl.toIso8601String()})");
+    debugPrint("PULL[planning] upserts=$upserts (range ${startD
+        .toIso8601String()} .. ${endExcl.toIso8601String()})");
     return upserts;
   }
 
@@ -344,7 +351,8 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     // 1) Insert local
     final localId = await into(planningEvents).insert(comp);
     final row =
-    await (select(planningEvents)..where((t) => t.id.equals(localId)))
+    await (select(planningEvents)
+      ..where((t) => t.id.equals(localId)))
         .getSingle();
 
     // 2) Push remote (create)
@@ -352,7 +360,8 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     await _remote.add(_toRemoteCreateMap(row, uidDefault: uidDefault));
 
     // 3) Rattache l'ID
-    await (update(planningEvents)..where((t) => t.id.equals(localId))).write(
+    await (update(planningEvents)
+      ..where((t) => t.id.equals(localId))).write(
       PlanningEventsCompanion(firestoreId: Value(ref.id)),
     );
 
@@ -364,12 +373,14 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   Future<void> updateAndPush(int id, PlanningEventsCompanion comp,
       {required String uidDefault}) async {
     final existing =
-    await (select(planningEvents)..where((t) => t.id.equals(id)))
+    await (select(planningEvents)
+      ..where((t) => t.id.equals(id)))
         .getSingleOrNull();
     if (existing == null) return;
 
     // 1) Update local
-    await (update(planningEvents)..where((t) => t.id.equals(id))).write(comp);
+    await (update(planningEvents)
+      ..where((t) => t.id.equals(id))).write(comp);
 
     // 2) Push remote
     if (existing.firestoreId == null) {
@@ -384,23 +395,24 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
                 : existing.dateStart,
             dateEnd:
             comp.dateEnd.present ? comp.dateEnd.value : existing.dateEnd,
-            uid: comp.uid.present ? comp.uid.value : existing.uid,
-            rank: comp.rank.present
-                ? Value<int?>(comp.rank.value)
-                : Value<int?>(existing.rank),
+            uid: comp.uid.present ? Value<String?>(comp.uid.value) : Value<
+                String?>(existing.uid),
+            rank: comp.rank.present ? Value<int?>(comp.rank.value)    : Value<int?>(existing.rank),
           ),
           uidDefault: uidDefault,
         ),
       );
 
-      await (update(planningEvents)..where((t) => t.id.equals(id))).write(
+      await (update(planningEvents)
+        ..where((t) => t.id.equals(id))).write(
         PlanningEventsCompanion(firestoreId: Value(ref.id)),
       );
       debugPrint("SYNC[upsert->create][planning]: ${ref.id}");
     } else {
       await _remote.doc(existing.firestoreId!).set(
         _toRemoteUpdateMap(
-          await (select(planningEvents)..where((t) => t.id.equals(id)))
+          await (select(planningEvents)
+            ..where((t) => t.id.equals(id)))
               .getSingle(),
           uidDefault: uidDefault,
         ),
@@ -412,11 +424,13 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
 
   Future<void> deleteAndPush(int id) async {
     final row =
-    await (select(planningEvents)..where((t) => t.id.equals(id)))
+    await (select(planningEvents)
+      ..where((t) => t.id.equals(id)))
         .getSingleOrNull();
     if (row == null) return;
 
-    await (delete(planningEvents)..where((t) => t.id.equals(id))).go();
+    await (delete(planningEvents)
+      ..where((t) => t.id.equals(id))).go();
 
     if (row.firestoreId != null) {
       await _remote.doc(row.firestoreId!).delete();
@@ -430,8 +444,10 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
         .get();
 
     for (final ev in pending) {
-      final ref = await _remote.add(_toRemoteCreateMap(ev, uidDefault: uidDefault));
-      await (update(planningEvents)..where((t) => t.id.equals(ev.id))).write(
+      final ref = await _remote.add(
+          _toRemoteCreateMap(ev, uidDefault: uidDefault));
+      await (update(planningEvents)
+        ..where((t) => t.id.equals(ev.id))).write(
         PlanningEventsCompanion(firestoreId: Value(ref.id)),
       );
       debugPrint("SYNC[upsert->create][planning]: ${ref.id}");
@@ -487,7 +503,7 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
     // 1) PATCH MINIMAL côté Firestore (merge), pour ne pas toucher typeEvent/user/trigramme
     await _remote.doc(firestoreId).set({
       'dateStart': fs.Timestamp.fromDate(dateStart),
-      'dateEnd'  : fs.Timestamp.fromDate(dateEnd),
+      'dateEnd': fs.Timestamp.fromDate(dateEnd),
       if (rank != null) 'rank': rank,
       'updatedAt': fs.FieldValue.serverTimestamp(),
     }, fs.SetOptions(merge: true));
@@ -543,31 +559,35 @@ class PlanningDao extends DatabaseAccessor<AppDatabase>
   // ---------------------------------------------------------------------------
 
   /// Map de création Firestore garantissant `user=trigramme`, `trigramme=trigramme`, `uid` non vide.
-  Map<String, dynamic> _toRemoteCreateMap(PlanningEvent e,
-      {required String uidDefault}) =>
-      {
-        'user': e.user,              // TRIGRAMME (canonique)
-        'trigramme': e.user,         // miroir
-        'typeEvent': e.typeEvent,
-        'dateStart': fs.Timestamp.fromDate(e.dateStart),
-        'dateEnd': fs.Timestamp.fromDate(e.dateEnd),
-        'uid': (e.uid.isNotEmpty ? e.uid : uidDefault),
-        if (e.rank != null) 'rank': e.rank,
-        'createdAt': fs.FieldValue.serverTimestamp(),
-        'updatedAt': fs.FieldValue.serverTimestamp(),
-      };
+  Map<String, dynamic> _toRemoteCreateMap(PlanningEvent e, {
+    required String uidDefault,
+  }) {
+    return {
+      'user': e.user, // TRIGRAMME (canonique)
+      'trigramme': e.user, // miroir
+      'typeEvent': e.typeEvent,
+      'dateStart': fs.Timestamp.fromDate(e.dateStart),
+      'dateEnd': fs.Timestamp.fromDate(e.dateEnd),
+      'uid': (e.uid?.isNotEmpty == true ? e.uid : uidDefault),
+      if (e.rank != null) 'rank': e.rank,
+      'createdAt': fs.FieldValue.serverTimestamp(),
+      'updatedAt': fs.FieldValue.serverTimestamp(),
+    };
+  }
 
-  /// Map d’update Firestore gardant le même contrat.
-  Map<String, dynamic> _toRemoteUpdateMap(PlanningEvent e,
-      {required String uidDefault}) =>
-      {
-        'user': e.user,              // TRIGRAMME
-        'trigramme': e.user,         // miroir
-        'typeEvent': e.typeEvent,
-        'dateStart': fs.Timestamp.fromDate(e.dateStart),
-        'dateEnd': fs.Timestamp.fromDate(e.dateEnd),
-        'uid': (e.uid.isNotEmpty ? e.uid : uidDefault),
-        if (e.rank != null) 'rank': e.rank,
-        'updatedAt': fs.FieldValue.serverTimestamp(),
-      };
+// ✅ Update map pour Firestore (même contrat)
+  Map<String, dynamic> _toRemoteUpdateMap(PlanningEvent e, {
+    required String uidDefault,
+  }) {
+    return {
+      'user': e.user, // TRIGRAMME
+      'trigramme': e.user, // miroir
+      'typeEvent': e.typeEvent,
+      'dateStart': fs.Timestamp.fromDate(e.dateStart),
+      'dateEnd': fs.Timestamp.fromDate(e.dateEnd),
+      'uid': (e.uid?.isNotEmpty == true ? e.uid : uidDefault),
+      if (e.rank != null) 'rank': e.rank,
+      'updatedAt': fs.FieldValue.serverTimestamp(),
+    };
+  }
 }

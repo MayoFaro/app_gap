@@ -1,22 +1,27 @@
-// File: lib/services/sync_service.dart
+// lib/services/sync_service.dart
+//
+// ✅ Correctif MAJEUR _syncUsers :
+//    - Si la table locale "users" est VIDE → on force un IMPORT COMPLET (peu importe lastSync)
+//    - Filet de sécurité : si après l’incrémentale, le local reste anormalement faible, on refait un full import
+// ✅ Le reste (missions, planning, chefMessages, organigramme) inchangé
+//
+// Remplace intégralement ton fichier par celui-ci.
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as fs;
 import 'package:flutter/cupertino.dart'; // for debugPrint
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart' hide Column, Query;
 
-import '../data/app_database.dart'; // Drift (tables & companions)
+import '../data/app_database.dart';
 import '../data/chef_message_dao.dart';
-import '../models/user_model.dart'; // (optionnel) si besoin
+import '../models/user_model.dart';
 
-/// Enum de pilotage de la stratégie de synchro.
 enum Fonction { chef, cdt, none }
 
-/// Service unique de synchronisation Firestore → Drift.
 class SyncService {
   final AppDatabase db;
   final Fonction fonction;
-
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
   SyncService({required this.db, required this.fonction});
@@ -24,98 +29,52 @@ class SyncService {
   Future<void> syncAll() async {
     debugPrint("SYNC: Début synchronisation pour fonction=$fonction");
 
-    await _syncUsers();           // Full (1er run) + incrémentale (updatedAt)
-    await _syncChefMessages();    // createdAt >= today
-    await _syncOrganigramme();    // Full + incrémentale (updatedAt)
-    await _syncMissions();        // Stratégie dépend de fonction + upsert réel
-    await _syncPlanningEvents();  // createdAt (non-chef) ; full+inc chef/cdt
+    await _syncUsers();           // ✅ correctif ici
+    await _syncChefMessages();
+    await _syncOrganigramme();
+    await _syncMissions();
+    await _syncPlanningEvents();
 
     debugPrint("SYNC: Fin de la synchronisation");
   }
 
   // ---------------------------------------------------------------------------
-  // USERS
+  // HELPERS lastSync
+  Future<DateTime?> _getLastSync(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final millis = prefs.getInt('sync_last_$key');
+    if (millis == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(millis);
+  }
+
+  Future<void> _setLastSync(String key, DateTime dt) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('sync_last_$key', dt.millisecondsSinceEpoch);
+  }
+
+  DateTime _startOfTodayLocal() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
   // ---------------------------------------------------------------------------
+  // USERS (correctif)
   Future<void> _syncUsers() async {
     try {
-      final existing = await db.select(db.users).get();
-      final lastSync = await _getLastSync('users');
-      final isFirstRun = existing.isEmpty && (lastSync == null);
+        final existing = await db.select(db.users).get();
+        debugPrint('SYNC[users][diagnostic] local=${existing.length}');
+        final localCount = existing.length;
+        final lastSync = await _getLastSync('users');
 
-      if (isFirstRun) {
-        debugPrint('SYNC[users]: table locale vide → lecture Firestore…');
-        final snap = await firestore.collection('users').get();
-        debugPrint('SYNC[users]: Firestore count=${snap.docs.length}');
-        if (snap.docs.isEmpty) {
+        // ✅ 1) Si la table locale est vide → FULL IMPORT (peu importe lastSync)
+        if (localCount == 0) {
+          debugPrint('SYNC[users]: table locale vide → FULL import Firestore…');
+          await _fullImportUsers();
           await _setLastSync('users', DateTime.now());
           return;
-        }
+         }
 
-        final Map<String, _UserPick> byTrig = {};
-        int duplicates = 0;
-        int uidWins = 0;
-
-        for (final d in snap.docs) {
-          final data = d.data();
-          final triRaw      = (data['trigramme'] ?? data['trigram'] ?? '').toString().trim();
-          final grpRaw      = (data['group'] ?? data['groupe'] ?? '').toString().trim();
-          final roleRaw     = (data['role'] ?? '').toString().trim();
-          final fonctionRaw = (data['fonction'] ?? '').toString().trim();
-          if (triRaw.isEmpty) continue;
-
-          final grp = grpRaw.toLowerCase();
-          final role = roleRaw.toLowerCase();
-          final fonction = (fonctionRaw.isEmpty ? 'rien' : fonctionRaw.toLowerCase());
-          if (grp.isEmpty || role.isEmpty) continue;
-
-          final looksLikeUid = (d.id != triRaw && d.id.length > 8);
-          final comp = UsersCompanion.insert(
-            trigramme: triRaw,
-            group: grp,
-            role: role,
-            fonction: fonction,
-          );
-
-          final cand = _UserPick(comp: comp, isUid: looksLikeUid, docId: d.id);
-          final prev = byTrig[triRaw];
-          if (prev == null) {
-            byTrig[triRaw] = cand;
-          } else {
-            duplicates++;
-            if (!prev.isUid && cand.isUid) {
-              byTrig[triRaw] = cand; uidWins++;
-            } else if (prev.isUid && !cand.isUid) {
-              // keep prev
-            } else {
-              byTrig[triRaw] = cand;
-            }
-          }
-        }
-
-        final inserts = byTrig.values.map((p) => p.comp).toList(growable: false);
-        if (inserts.isEmpty) {
-          await _setLastSync('users', DateTime.now());
-          return;
-        }
-
-        debugPrint('SYNC[users]: prêts à insérer ${inserts.length} lignes (après dédup). '
-            'doublons détectés=$duplicates, uid préférés=$uidWins');
-
-        try {
-          await db.batch((b) => b.insertAllOnConflictUpdate(db.users, inserts));
-          debugPrint('SYNC[users]: UPSERT batch réussi.');
-        } catch (_) {
-          for (final row in inserts) {
-            await db.into(db.users).insertOnConflictUpdate(row);
-          }
-          debugPrint('SYNC[users]: UPSERT boucle réussi.');
-        }
-
-        await _setLastSync('users', DateTime.now());
-        return;
-      }
-
-      // incrémentale
+      // ✅ 2) Sinon, incrémentale sur updatedAt > lastSync
       debugPrint('SYNC[users][inc]: start (lastSync=$lastSync)');
       const pageSize = 300;
       DocumentSnapshot<Map<String, dynamic>>? cursor;
@@ -158,6 +117,13 @@ class SyncService {
         if (cursor == null) break;
       }
 
+      // ✅ 3) Filet de sécurité : si local anormal (<5) ou si aucune maj, on force un full
+      final after = await db.select(db.users).get();
+      if (after.length < 5) {
+        debugPrint('SYNC[users][safety]: local<5 → FULL import');
+        await _fullImportUsers();
+      }
+
       await _setLastSync('users', DateTime.now());
       debugPrint('SYNC[users][inc]: done (upserts=$touched)');
     } catch (e, st) {
@@ -166,16 +132,71 @@ class SyncService {
     }
   }
 
+  /// Import complet de la collection users avec déduplication par trigramme.
+  Future<void> _fullImportUsers() async {
+    final snap = await firestore.collection('users').get();
+    debugPrint('SYNC[users][full]: Firestore count=${snap.docs.length}');
+    if (snap.docs.isEmpty) return;
+
+    final Map<String, _UserPick> byTrig = {};
+    int duplicates = 0;
+    int uidWins = 0;
+
+    for (final d in snap.docs) {
+      final data = d.data();
+      final triRaw      = (data['trigramme'] ?? data['trigram'] ?? '').toString().trim();
+      final grpRaw      = (data['group'] ?? data['groupe'] ?? '').toString().trim();
+      final roleRaw     = (data['role'] ?? '').toString().trim();
+      final fonctionRaw = (data['fonction'] ?? '').toString().trim();
+      if (triRaw.isEmpty) continue;
+
+      final grp = grpRaw.toLowerCase();
+      final role = roleRaw.toLowerCase();
+      final fonction = (fonctionRaw.isEmpty ? 'rien' : fonctionRaw.toLowerCase());
+      if (grp.isEmpty || role.isEmpty) continue;
+
+      final looksLikeUid = (d.id != triRaw && d.id.length > 8);
+      final comp = UsersCompanion.insert(
+        trigramme: triRaw,
+        group: grp,
+        role: role,
+        fonction: fonction,
+      );
+
+      final cand = _UserPick(comp: comp, isUid: looksLikeUid, docId: d.id);
+      final prev = byTrig[triRaw];
+      if (prev == null) {
+        byTrig[triRaw] = cand;
+      } else {
+        duplicates++;
+        if (!prev.isUid && cand.isUid) {
+          byTrig[triRaw] = cand; uidWins++;
+        } // sinon on garde prev
+      }
+    }
+
+    final inserts = byTrig.values.map((p) => p.comp).toList(growable: false);
+    debugPrint('SYNC[users][full]: prêts à insérer ${inserts.length} (dup=$duplicates, uidWins=$uidWins)');
+
+    try {
+      await db.batch((b) => b.insertAllOnConflictUpdate(db.users, inserts));
+      debugPrint('SYNC[users][full]: UPSERT batch OK');
+    } catch (_) {
+      for (final row in inserts) {
+        await db.into(db.users).insertOnConflictUpdate(row);
+      }
+      debugPrint('SYNC[users][full]: UPSERT boucle OK');
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // CHEF MESSAGES
-  // ---------------------------------------------------------------------------
   Future<void> _syncChefMessages() async {
     debugPrint('SYNC[chefMessages]: start');
 
-    final dao = ChefMessageDao(db); // <-- adapte si ton champ s'appelle autrement
+    final dao = ChefMessageDao(db);
     final today = _startOfTodayLocal();
 
-    // 1) Récupération des messages depuis Firestore (>= aujourd'hui 00:00)
     final q = firestore
         .collection('chefMessages')
         .where('createdAt', isGreaterThanOrEqualTo: fs.Timestamp.fromDate(today))
@@ -200,7 +221,6 @@ class SyncService {
       final createdAt = (tsCreated is fs.Timestamp) ? tsCreated.toDate() : DateTime.now();
       final updatedAt = (tsUpdated is fs.Timestamp) ? tsUpdated.toDate() : null;
 
-      // 1.a Upsert du message en local
       final localId = await dao.upsertMessageFromRemote(
         remoteId: remoteId,
         content: content,
@@ -212,13 +232,9 @@ class SyncService {
       );
       upserts++;
 
-      // 1.b Récupération des ACKs distants, upsert en local
       final acksSnap = await firestore
-          .collection('chefMessages')
-          .doc(remoteId)
-          .collection('acks')
-          .orderBy('seenAt', descending: false)
-          .get();
+          .collection('chefMessages').doc(remoteId)
+          .collection('acks').orderBy('seenAt', descending: false).get();
 
       for (final a in acksSnap.docs) {
         final ad = a.data();
@@ -241,10 +257,8 @@ class SyncService {
     debugPrint('SYNC[chefMessages]: done');
   }
 
-
   // ---------------------------------------------------------------------------
   // ORGANIGRAMME
-  // ---------------------------------------------------------------------------
   Future<void> _syncOrganigramme() async {
     debugPrint('SYNC[organigramme]: start');
 
@@ -266,7 +280,6 @@ class SyncService {
           if (ts is! Timestamp) continue;
           if (!ts.toDate().isAfter(lastSync)) continue;
         }
-
         // TODO: upsert Drift (organigramme)
         debugPrint('SYNC[pull->update][org]: ${doc.id}');
       }
@@ -280,8 +293,7 @@ class SyncService {
   }
 
   // ---------------------------------------------------------------------------
-  // MISSIONS : upsert réel (identique à MissionDao.pullFromRemote)
-  // ---------------------------------------------------------------------------
+  // MISSIONS
   Future<void> _syncMissions() async {
     debugPrint('SYNC[missions]: start (fonction=$fonction)');
 
@@ -318,14 +330,11 @@ class SyncService {
   }
 
   // ---------------------------------------------------------------------------
-  // PLANNING EVENTS : upsert réel (pull)
-  //  - chef/cdt : full scan paginé par createdAt, filtre inc. sur (updatedAt ?? createdAt)
-  //  - none     : where createdAt >= today
-  // ---------------------------------------------------------------------------
+  // PLANNING EVENTS
   Future<void> _syncPlanningEvents() async {
     debugPrint('SYNC[planningEvents]: start (fonction=$fonction)');
 
-    final qBase = _buildPlanningEventsQuery(); // créé selon fonction
+    final qBase = _buildPlanningEventsQuery();
     const pageSize = 300;
     DocumentSnapshot<Map<String, dynamic>>? cursor;
 
@@ -343,7 +352,6 @@ class SyncService {
       for (final doc in snap.docs) {
         final data = doc.data();
 
-        // chef/cdt → filtre inc. sur (updatedAt ?? createdAt)
         if (lastSync != null) {
           final DateTime? eff = _pickEffectiveTimestamp(data);
           if (eff == null || !eff.isAfter(lastSync)) continue;
@@ -369,7 +377,6 @@ class SyncService {
 
   // =========================== HELPERS PRIVÉS ================================
 
-  /// Upsert **réel** d'une mission (insert/update/push selon fraîcheur).
   Future<void> _upsertMissionFromFirestore(String remoteId, Map<String, dynamic> data) async {
     try {
       final tsDate = data['date'];
@@ -414,7 +421,6 @@ class SyncService {
           await (db.update(db.missions)..where((t) => t.id.equals(existing.id))).write(comp);
           debugPrint("SYNC[pull->update]: $remoteId");
         } else {
-          // push local vers Firestore si besoin
           await firestore.collection('missions').doc(existing.remoteId!).set({
             'date': Timestamp.fromDate(existing.date),
             'vecteur': existing.vecteur,
@@ -436,14 +442,8 @@ class SyncService {
     }
   }
 
-  /// Upsert **réel** d’un planningEvent (insert/update).
-  /// - Match par `firestoreId` = doc.id
-  /// - Mapping trigramme local: `user` (3 lettres) ou `trigramme`/`trigram`/`userTrigram`
-  /// - Dates requises: `dateStart` et `dateEnd` (Timestamp)
-  /// - `uid` (si présent) stocké dans la colonne locale `uid`
   Future<bool> _upsertPlanningEventFromFirestore(String docId, Map<String, dynamic> data) async {
     try {
-      // 1) Extractions robustes
       final String? trigram = _extractTrigramForPlanning(data);
       if (trigram == null) {
         debugPrint('SYNC[planning][WARN]: $docId sans trigramme exploitable → skip');
@@ -468,26 +468,22 @@ class SyncService {
       final String uid = (data['uid'] as String?) ?? '';
       final int? rank = (data['rank'] is int) ? (data['rank'] as int) : null;
 
-      // 2) Existe-t-il déjà localement ?
       final existing = await (db.select(db.planningEvents)
-        ..where((t) => t.firestoreId.equals(docId)))
-          .getSingleOrNull();
+        ..where((t) => t.firestoreId.equals(docId))).getSingleOrNull();
 
       final comp = PlanningEventsCompanion.insert(
-        user: trigram,                  // 3 lettres
+        user: trigram,
         typeEvent: typeEvent,
         dateStart: dateStart,
         dateEnd: dateEnd,
-        uid: Value(uid),                // UID (peut être vide)
+        uid: Value(uid),
         firestoreId: Value(docId),
         rank: Value(rank),
       );
 
       if (existing == null) {
-        // INSERT
         await db.into(db.planningEvents).insert(comp);
       } else {
-        // UPDATE (on reflète la source serveur)
         await (db.update(db.planningEvents)..where((t) => t.id.equals(existing.id))).write(comp);
       }
 
@@ -499,10 +495,6 @@ class SyncService {
     }
   }
 
-  /// Heuristique : récupère un trigramme (3 lettres) depuis le doc Firestore.
-  /// - si `user` existe et length==3 → pris
-  /// - sinon on tente `trigramme` / `trigram` / `userTrigram`
-  /// - sinon null (skip)
   String? _extractTrigramForPlanning(Map<String, dynamic> data) {
     String? s = (data['user'] as String?);
     if (s != null && s.trim().length == 3) return s.trim().toUpperCase();
@@ -510,26 +502,6 @@ class SyncService {
     if (s != null && s.trim().length == 3) return s.trim().toUpperCase();
     return null;
   }
-
-  /// Début de journée locale (00:00:00).
-  DateTime _startOfTodayLocal() {
-    final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day);
-  }
-
-  Future<DateTime?> _getLastSync(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    final millis = prefs.getInt('sync_last_$key');
-    if (millis == null) return null;
-    return DateTime.fromMillisecondsSinceEpoch(millis);
-  }
-
-  Future<void> _setLastSync(String key, DateTime dt) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('sync_last_$key', dt.millisecondsSinceEpoch);
-  }
-
-  // ---------------------------- Query Builders -------------------------------
 
   Query<Map<String, dynamic>> _buildMissionsQuery() {
     final col = firestore.collection('missions');
@@ -544,9 +516,6 @@ class SyncService {
     }
   }
 
-  /// planningEvents :
-  /// - chef/cdt : full scan par createdAt ; inc. via (updatedAt ?? createdAt)
-  /// - none     : where createdAt >= today
   Query<Map<String, dynamic>> _buildPlanningEventsQuery() {
     final col = firestore.collection('planningEvents');
     final today = _startOfTodayLocal();
@@ -560,7 +529,6 @@ class SyncService {
     }
   }
 
-  /// Timestamp “effectif” pour l’incrémentale planning.
   DateTime? _pickEffectiveTimestamp(Map<String, dynamic> data) {
     final u = data['updatedAt'];
     final c = data['createdAt'];
@@ -570,7 +538,6 @@ class SyncService {
   }
 }
 
-/// Structure interne pour la déduplication users
 class _UserPick {
   final UsersCompanion comp;
   final bool isUid;

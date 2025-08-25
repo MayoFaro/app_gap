@@ -85,23 +85,34 @@ class _AstreinteGeneratorScreenState extends State<AstreinteGeneratorScreen> {
 
 
   Future<void> _loadPilotesAvion() async {
+    // Étape 1 : lecture brute
     final rows = await widget.db.select(widget.db.users).get();
-    final tris = rows
-        .where((u) =>
+    debugPrint('ASTGEN[_loadPilotesAvion] total users lus=${rows.length}');
+
+    // Étape 2 : filtrage par group/role
+    final filtered = rows.where((u) =>
     (u.group.toLowerCase() == 'avion') &&
-        (u.role.toLowerCase() == 'pilote'))
+        (u.role.toLowerCase() == 'pilote')
+    ).toList();
+    debugPrint('ASTGEN[_loadPilotesAvion] après filtre avion/pilote = ${filtered.length} '
+        '(${filtered.map((u)=>"${u.trigramme}:${u.role}:${u.group}").join(", ")})');
+
+    // Étape 3 : normalisation trigrammes
+    final tris = filtered
         .map((u) => u.trigramme.trim().toUpperCase())
         .where((t) => t.length == 3)
         .toSet()
         .toList()
       ..sort();
 
+    debugPrint('ASTGEN[_loadPilotesAvion] trigrammes valides=${tris.length} -> $tris');
+
     if (!mounted) return;
     setState(() => _pilotes = tris);
 
-    // maintenant que _pilotes est à jour, calcule les totaux annuels
     await _refreshYearTotals();
   }
+
 
 
   List<DateTime> _parseExtraJf(String raw) {

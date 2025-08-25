@@ -1859,12 +1859,8 @@ class $PlanningEventsTable extends PlanningEvents
   static const VerificationMeta _uidMeta = const VerificationMeta('uid');
   @override
   late final GeneratedColumn<String> uid = GeneratedColumn<String>(
-      'uid', aliasedName, false,
-      additionalChecks:
-          GeneratedColumn.checkTextLength(minTextLength: 1, maxTextLength: 64),
-      type: DriftSqlType.string,
-      requiredDuringInsert: false,
-      defaultValue: const Constant(''));
+      'uid', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _firestoreIdMeta =
       const VerificationMeta('firestoreId');
   @override
@@ -1950,7 +1946,7 @@ class $PlanningEventsTable extends PlanningEvents
       dateEnd: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}date_end'])!,
       uid: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}uid'])!,
+          .read(DriftSqlType.string, data['${effectivePrefix}uid']),
       firestoreId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}firestore_id']),
       rank: attachedDatabase.typeMapping
@@ -1970,7 +1966,7 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
   final String typeEvent;
   final DateTime dateStart;
   final DateTime dateEnd;
-  final String uid;
+  final String? uid;
   final String? firestoreId;
   final int? rank;
   const PlanningEvent(
@@ -1979,7 +1975,7 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
       required this.typeEvent,
       required this.dateStart,
       required this.dateEnd,
-      required this.uid,
+      this.uid,
       this.firestoreId,
       this.rank});
   @override
@@ -1990,7 +1986,9 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
     map['type_event'] = Variable<String>(typeEvent);
     map['date_start'] = Variable<DateTime>(dateStart);
     map['date_end'] = Variable<DateTime>(dateEnd);
-    map['uid'] = Variable<String>(uid);
+    if (!nullToAbsent || uid != null) {
+      map['uid'] = Variable<String>(uid);
+    }
     if (!nullToAbsent || firestoreId != null) {
       map['firestore_id'] = Variable<String>(firestoreId);
     }
@@ -2007,7 +2005,7 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
       typeEvent: Value(typeEvent),
       dateStart: Value(dateStart),
       dateEnd: Value(dateEnd),
-      uid: Value(uid),
+      uid: uid == null && nullToAbsent ? const Value.absent() : Value(uid),
       firestoreId: firestoreId == null && nullToAbsent
           ? const Value.absent()
           : Value(firestoreId),
@@ -2024,7 +2022,7 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
       typeEvent: serializer.fromJson<String>(json['typeEvent']),
       dateStart: serializer.fromJson<DateTime>(json['dateStart']),
       dateEnd: serializer.fromJson<DateTime>(json['dateEnd']),
-      uid: serializer.fromJson<String>(json['uid']),
+      uid: serializer.fromJson<String?>(json['uid']),
       firestoreId: serializer.fromJson<String?>(json['firestoreId']),
       rank: serializer.fromJson<int?>(json['rank']),
     );
@@ -2038,7 +2036,7 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
       'typeEvent': serializer.toJson<String>(typeEvent),
       'dateStart': serializer.toJson<DateTime>(dateStart),
       'dateEnd': serializer.toJson<DateTime>(dateEnd),
-      'uid': serializer.toJson<String>(uid),
+      'uid': serializer.toJson<String?>(uid),
       'firestoreId': serializer.toJson<String?>(firestoreId),
       'rank': serializer.toJson<int?>(rank),
     };
@@ -2050,7 +2048,7 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
           String? typeEvent,
           DateTime? dateStart,
           DateTime? dateEnd,
-          String? uid,
+          Value<String?> uid = const Value.absent(),
           Value<String?> firestoreId = const Value.absent(),
           Value<int?> rank = const Value.absent()}) =>
       PlanningEvent(
@@ -2059,7 +2057,7 @@ class PlanningEvent extends DataClass implements Insertable<PlanningEvent> {
         typeEvent: typeEvent ?? this.typeEvent,
         dateStart: dateStart ?? this.dateStart,
         dateEnd: dateEnd ?? this.dateEnd,
-        uid: uid ?? this.uid,
+        uid: uid.present ? uid.value : this.uid,
         firestoreId: firestoreId.present ? firestoreId.value : this.firestoreId,
         rank: rank.present ? rank.value : this.rank,
       );
@@ -2101,7 +2099,7 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
   final Value<String> typeEvent;
   final Value<DateTime> dateStart;
   final Value<DateTime> dateEnd;
-  final Value<String> uid;
+  final Value<String?> uid;
   final Value<String?> firestoreId;
   final Value<int?> rank;
   const PlanningEventsCompanion({
@@ -2155,7 +2153,7 @@ class PlanningEventsCompanion extends UpdateCompanion<PlanningEvent> {
       Value<String>? typeEvent,
       Value<DateTime>? dateStart,
       Value<DateTime>? dateEnd,
-      Value<String>? uid,
+      Value<String?>? uid,
       Value<String?>? firestoreId,
       Value<int?>? rank}) {
     return PlanningEventsCompanion(

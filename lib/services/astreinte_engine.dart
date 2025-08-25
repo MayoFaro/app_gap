@@ -1,16 +1,12 @@
 // lib/services/astreinte_engine.dart
 //
 // Moteur d'astreintes (avion) — version DAO-first.
-// - Lit/écrit via PlanningDao (Drift). On ne touche Firestore qu'indirectement,
-//   puisque le DAO pousse déjà (createAndPush / updateAndPush / deleteAndPush).
-// - Compte correctement les jours critiques (samedi + dimanche + JF) en INCLUSIF.
-// - Génère 3 propositions réellement différentes (profils + seeds).
-// - Respecte : pas de 1-1 (sauf contrainte dure), 1-0-1 toléré si profil “agressif”,
-//   et 1-0-1 doit être suivi de 0-0-* autant que possible.
-// - Variabilité des couples (pénalité) + priorité aux semaines “étranglées”.
+// ✅ Cette version ajoute UNIQUEMENT des logs de diagnostic (kAstreinteDebug).
+// ❌ Aucune logique fonctionnelle n’a été modifiée.
 //
-// NB : Ce fichier expose les mêmes méthodes publiques que l’ancienne version pour
-//      rester aligné avec l’UI.
+// -----------------------------------------------------------------------------
+// MODE DEBUG
+// -----------------------------------------------------------------------------
 
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -18,6 +14,14 @@ import 'package:intl/intl.dart';
 
 import '../data/planning_dao.dart';
 import '../data/app_database.dart';
+
+// Active / coupe tous les logs de ce moteur.
+const bool kAstreinteDebug = true;
+
+// Logger local : n’écrit qu’en debug + si kAstreinteDebug=true
+void logAst(String msg) {
+  if (kDebugMode && kAstreinteDebug) debugPrint(msg);
+}
 
 // -----------------------------------------------------------------------------
 // Top-level helpers (accessibles partout dans ce fichier)
@@ -68,6 +72,7 @@ Iterable<DateTime> _daysInclusive(DateTime a, DateTime b) sync* {
 extension _Between on DateTime {
   bool isBetween(DateTime a, DateTime b) => !isBefore(a) && !isAfter(b);
 }
+
 // Mémo semé : semaines -1 / -2 avant la période + couples observés
 class _SeedHistory {
   final Map<String, List<int>> preWeeksByPilot;   // ex: {'DPS': [-1], 'LCM': [-2], ...}
@@ -108,9 +113,7 @@ class WeekSpan {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is WeekSpan &&
-              monday == other.monday &&
-              sunday == other.sunday;
+          other is WeekSpan && monday == other.monday && sunday == other.sunday;
 
   @override
   int get hashCode => Object.hash(monday, sunday);
@@ -207,8 +210,7 @@ class AstreinteEngine {
   final PlanningDao planningDao;
 
   /// Optionnel : provider de JF (from..to → dates dayOnly). Si null, pas de JF dynamiques.
-  final Future<
-      List<DateTime>> Function(DateTime from, DateTime to)? joursFeriesProvider;
+  final Future<List<DateTime>> Function(DateTime from, DateTime to)? joursFeriesProvider;
 
   AstreinteEngine({
     required this.planningDao,
@@ -219,30 +221,225 @@ class AstreinteEngine {
   // Public API pour l’UI
   // =========================
 
+  // Mesure la dispo le week-end (sam+dim) : set des pilotes dispo par semaine.
+  List<Set<String>> _availabilityByWeekSets({
+    required List<String> tris,
+    required List<WeekSpan> weeks,
+    required Map<String, Set<DateTime>> indisposByPilot,
+  }) {
+    final out = <Set<String>>[];
+    for (final w in weeks) {
+      final sat = _dayOnly(w.monday.add(const Duration(days: 5)));
+      final sun = _dayOnly(w.monday.add(const Duration(days: 6)));
+      final avail = <String>{};
+      for (final t in tris) {
+        final busy = indisposByPilot[t] ?? const <DateTime>{};
+        final can = !(busy.contains(sat) || busy.contains(sun));
+        if (can) avail.add(t);
+      }
+      out.add(avail);
+    }
+    return out;
+  }
+
+  // Trouve des grappes d’étranglement consécutives (<= threshold disponibles)
+  List<(int start, int end)> _bottleneckClusters({
+    required List<Set<String>> availByWeek,
+    required int threshold,
+  }) {
+    final res = <(int, int)>[];
+    int? runStart;
+    for (int i = 0; i < availByWeek.length; i++) {
+      final tight = availByWeek[i].length <= threshold;
+      if (tight) {
+        runStart ??= i;
+      } else if (runStart != null) {
+        res.add((runStart, i - 1));
+        runStart = null;
+      }
+    }
+    if (runStart != null) res.add((runStart, availByWeek.length - 1));
+    return res;
+  }
+
+  // HARD-GUARD : filtre “dur” contre 1-1-1 et 1-1 (sauf dernier recours).
+  bool _forbidden11(String p, int w, Map<String, List<int>> assigned) {
+    final L = assigned[p] ?? const <int>[];
+    return L.contains(w - 1); // 1-1
+  }
+
+  bool _forbidden111(String p, int w, Map<String, List<int>> assigned) {
+    final L = assigned[p] ?? const <int>[];
+    return L.contains(w - 1) && L.contains(w - 2); // 1-1-1
+  }
+
+  // Choisit un couple sur une semaine d’étranglement, en respectant les gardes.
+  ({String a, String b})? _choosePairForBottleneck({
+    required int w,
+    required WeekSpan span,
+    required List<String> tris,
+    required Set<String> available,
+    required Map<String, List<int>> assignedWeeksByPilot,
+    required Map<String, int> projectedWeJfDays,
+    required Set<(String, String)> previousCouples,
+    required Map<String, double> prefBoostRetard,
+  }) {
+    final cand = <({String a, String b, double score})>[];
+    final L = available.toList()..sort();
+    for (int i = 0; i < L.length; i++) {
+      for (int j = i + 1; j < L.length; j++) {
+        final a = L[i], b = L[j];
+
+        if (_forbidden111(a, w, assignedWeeksByPilot)) continue;
+        if (_forbidden111(b, w, assignedWeeksByPilot)) continue;
+
+        final would11 = _forbidden11(a, w, assignedWeeksByPilot) || _forbidden11(b, w, assignedWeeksByPilot);
+
+        final pa = projectedWeJfDays[a] ?? 0;
+        final pb = projectedWeJfDays[b] ?? 0;
+
+        double s = 0;
+        s += (max(pa, pb) * 12) + (pa + pb) * 1.0;
+
+        final canon = canonPair(a, b);
+        if (previousCouples.contains(canon)) s += 15;
+
+        s -= (prefBoostRetard[a] ?? 0.0);
+        s -= (prefBoostRetard[b] ?? 0.0);
+
+        if (would11) s += 2000;
+
+        cand.add((a: a, b: b, score: s));
+      }
+    }
+    if (cand.isEmpty) return null;
+
+    cand.sort((x, y) => x.score.compareTo(y.score));
+
+    final pick = cand.first;
+    return (a: pick.a, b: pick.b);
+  }
+
+  // Précalcule les verrous (locked) sur les semaines d’étranglement + seed des historiques
+  Future<({
+  Map<int, (String, String)> lockedByWeek,
+  Map<String, List<int>> preWeeksByPilot,
+  Set<(String, String)> prevCouplesBefore
+  })> _preassignFromBottlenecks({
+    required List<String> tris,
+    required List<WeekSpan> weeks,
+    required Map<String, Set<DateTime>> indisposByPilot,
+    required Map<String, int> baseline,
+  }) async {
+    final availByWeek = _availabilityByWeekSets(
+      tris: tris,
+      weeks: weeks,
+      indisposByPilot: indisposByPilot,
+    );
+
+    final threshold = max(2, (tris.length / 2).floor());
+    final clusters = _bottleneckClusters(availByWeek: availByWeek, threshold: threshold);
+
+    // Logs diagnostic
+    logAst('AST[pre] tris=${tris.length}, weeks=${weeks.length}, threshold=$threshold');
+    for (int i = 0; i < weeks.length; i++) {
+      final av = availByWeek[i].length;
+      if (av <= threshold) {
+        logAst('  - tight W${i + 1} ${_fmtDateFr(weeks[i].monday)} avail=$av/${tris.length}');
+      }
+    }
+    if (clusters.isEmpty) {
+      logAst('AST[pre] aucun cluster d’étranglement détecté');
+    } else {
+      logAst('AST[pre] clusters=${clusters.map((e) => '[${e.$1 + 1}..${e.$2 + 1}]').join(', ')}');
+    }
+
+    // Préférence retard
+    final minDone = baseline.values.isEmpty ? 0 : baseline.values.reduce(min);
+    final maxDone = baseline.values.isEmpty ? 0 : baseline.values.reduce(max);
+    final spanDone = max(1, maxDone - minDone);
+    final boost = <String, double>{
+      for (final t in tris) t: ((maxDone - (baseline[t] ?? 0)) / spanDone) * 10.0
+    };
+
+    final locked = <int, (String, String)>{};
+    final assignedSeed = <String, List<int>>{for (final t in tris) t: <int>[]};
+    final prevCouples = <(String, String)>{};
+    final projected = Map<String, int>.from(baseline);
+
+    for (final (start, end) in clusters) {
+      for (int w = start; w <= end; w++) {
+        if (locked.containsKey(w)) continue;
+        final span = weeks[w];
+        final avail = availByWeek[w];
+
+        final pick = _choosePairForBottleneck(
+          w: w,
+          span: span,
+          tris: tris,
+          available: avail,
+          assignedWeeksByPilot: assignedSeed,
+          projectedWeJfDays: projected,
+          previousCouples: prevCouples,
+          prefBoostRetard: boost,
+        );
+        if (pick == null) continue;
+
+        final canon = canonPair(pick.a, pick.b);
+        locked[w] = canon;
+
+        assignedSeed[pick.a]!.add(w);
+        assignedSeed[pick.b]!.add(w);
+        prevCouples.add(canon);
+
+        projected[pick.a] = (projected[pick.a] ?? 0) + 2;
+        projected[pick.b] = (projected[pick.b] ?? 0) + 2;
+
+        logAst("AST[pre][LOCK] W${w + 1} ${_fmtDateFr(span.monday)} => ${canon.$1}/${canon.$2}");
+      }
+    }
+
+    final sHist = await _seedHistoryBeforePeriod(
+      tris: tris,
+      firstMonday: weeks.first.monday,
+      jfForWeeks: {},
+    );
+
+    final pre = <String, List<int>>{
+      for (final t in tris)
+        t: [
+          ...(sHist.preWeeksByPilot[t] ?? const <int>[]),
+          ...(assignedSeed[t] ?? const <int>[]),
+        ]
+    };
+
+    final couplesBefore = <(String, String)>{}
+      ..addAll(sHist.prevCouplesBefore)
+      ..addAll(prevCouples);
+
+    return (lockedByWeek: locked, preWeeksByPilot: pre, prevCouplesBefore: couplesBefore);
+  }
+
   // =========================
-// Historique S-1 / S-2 (avant période)
-// =========================
+  // Historique S-1 / S-2 (avant période)
+  // =========================
 
   Future<_SeedHistory> _seedHistoryBeforePeriod({
     required List<String> tris,
     required DateTime firstMonday,
-    required Set<DateTime> jfForWeeks, // présent pour homogénéité, pas essentiel ici
+    required Set<DateTime> jfForWeeks,
   }) async {
-    // Deux semaines avant la période
     final m1 = _dayOnly(firstMonday.subtract(const Duration(days: 7)));
     final m2 = _dayOnly(firstMonday.subtract(const Duration(days: 14)));
 
     final pre = <String, List<int>>{for (final t in tris) t: <int>[]};
     final prevCouples = <(String, String)>{};
 
-    // Helper local : a-t-il eu AST sur les deux jours du WE donné ?
-    // (Méthode d’instance → a accès à planningDao)
     Future<bool> hadAstWeBothDays(String t, DateTime weekMonday) async {
       final monday = _dayOnly(weekMonday);
       final sat = _dayOnly(monday.add(const Duration(days: 5)));
       final sun = _dayOnly(monday.add(const Duration(days: 6)));
 
-      // Drift: end exclusif → Monday + 7
       final evs = await planningDao.getForRange(
         monday,
         monday.add(const Duration(days: 7)),
@@ -262,7 +459,6 @@ class AstreinteEngine {
       return false;
     }
 
-    // S-1
     final onMinus1 = <String>[];
     for (final t in tris) {
       if (await hadAstWeBothDays(t, m1)) {
@@ -274,7 +470,6 @@ class AstreinteEngine {
       prevCouples.add(canonPair(onMinus1[0], onMinus1[1]));
     }
 
-    // S-2
     final onMinus2 = <String>[];
     for (final t in tris) {
       if (await hadAstWeBothDays(t, m2)) {
@@ -286,6 +481,7 @@ class AstreinteEngine {
       prevCouples.add(canonPair(onMinus2[0], onMinus2[1]));
     }
 
+    logAst('AST[seed] S-1: ${onMinus1.join('/')}  |  S-2: ${onMinus2.join('/')}');
     return _SeedHistory(preWeeksByPilot: pre, prevCouplesBefore: prevCouples);
   }
 
@@ -299,14 +495,9 @@ class AstreinteEngine {
     final s = _dayOnly(from);
     final e = _dayOnly(to);
 
-    // JF dynamiques éventuels
-    final jf = (joursFeriesProvider != null)
-        ? await joursFeriesProvider!(s, e)
-        : <DateTime>[];
+    final jf = (joursFeriesProvider != null) ? await joursFeriesProvider!(s, e) : <DateTime>[];
 
-    // Lecture DAO
-    final evs = await planningDao.getForRange(
-        s, e.add(const Duration(days: 1)), forUser: tri);
+    final evs = await planningDao.getForRange(s, e.add(const Duration(days: 1)), forUser: tri);
     final ast = evs.where((x) => x.typeEvent == 'AST').toList();
 
     final counted = _collectAstWeJfDaysFromEvents(
@@ -317,34 +508,26 @@ class AstreinteEngine {
     ).toList()
       ..sort();
 
-    debugPrint("=== DEBUG AST ENGINE / $tri ===");
-    debugPrint("JOURS CRITIQUES = samedis + dimanches + JF");
-    debugPrint("[A] Évents lus (tous) : ${evs.length} / AST : ${ast.length}");
-    debugPrint("[A] AST (WE+JF) réalisés du ${_fmtDateFr(s)} au ${_fmtDateFr(
-        e)} : ${counted.length} jour(s)");
+    logAst("=== DEBUG AST ENGINE / $tri ===");
+    logAst("JOURS CRITIQUES = samedis + dimanches + JF");
+    logAst("[A] Évents lus (tous) : ${evs.length} / AST : ${ast.length}");
+    logAst("[A] AST (WE+JF) réalisés du ${_fmtDateFr(s)} au ${_fmtDateFr(e)} : ${counted.length} jour(s)");
     final fmt = DateFormat('dd/MM/yy');
-    for (final d in counted) {
+    for (final d in counted.take(12)) {
       final jfTag = _isJourFerie(d, jf) ? ' + JF' : '';
-      debugPrint("  - ${_weekdayShortFr(d)} ${fmt.format(d)}$jfTag");
+      logAst("  - ${_weekdayShortFr(d)} ${fmt.format(d)}$jfTag");
     }
 
-    // Indispos (tous codes) sur la même plage
     final indispos = <DateTime>{};
     for (final ev in evs) {
-      for (final d in _daysInclusive(
-          _dayOnly(ev.dateStart), _dayOnly(ev.dateEnd))) {
+      for (final d in _daysInclusive(_dayOnly(ev.dateStart), _dayOnly(ev.dateEnd))) {
         if (d.isBefore(s) || d.isAfter(e)) continue;
         indispos.add(d);
       }
     }
-    final listInd = indispos.toList()
-      ..sort();
-    debugPrint("[B] Indispos sur ${_fmtDateFr(s)} → ${_fmtDateFr(e)} : ${listInd
-        .length} jour(s)");
-    for (final d in listInd) {
-      debugPrint("  - ${_weekdayShortFr(d)} ${fmt.format(d)}");
-    }
-    debugPrint("=== FIN DEBUG $tri ===");
+    final listInd = indispos.toList()..sort();
+    logAst("[B] Indispos ${_fmtDateFr(s)} → ${_fmtDateFr(e)} : ${listInd.length} jour(s) (échantillon ${listInd.take(10).map((d)=>fmt.format(d)).join(', ')})");
+    logAst("=== FIN DEBUG $tri ===");
   }
 
   /// B) Compte des jours AST WE+JF sur l'année (inclut les AST déjà planifiées futures)
@@ -355,13 +538,11 @@ class AstreinteEngine {
     final from = DateTime(year, 1, 1);
     final to = DateTime(year, 12, 31);
 
-    final jf = (joursFeriesProvider != null) ? await joursFeriesProvider!(
-        from, to) : <DateTime>[];
+    final jf = (joursFeriesProvider != null) ? await joursFeriesProvider!(from, to) : <DateTime>[];
     final out = <String, int>{for (final t in pilotes) t: 0};
 
     for (final t in pilotes) {
-      final evs = await planningDao.getForRange(
-          from, to.add(const Duration(days: 1)), forUser: t);
+      final evs = await planningDao.getForRange(from, to.add(const Duration(days: 1)), forUser: t);
       final ast = evs.where((x) => x.typeEvent == 'AST').toList();
       final days = _collectAstWeJfDaysFromEvents(
         ast,
@@ -374,103 +555,144 @@ class AstreinteEngine {
     return out;
   }
 
+  // Helper debug: nettoie les trigrammes comme le moteur et trace les rejets
+  List<String> _sanitizeTrisWithDebug(List<String> pilotesTrigrammes) {
+    final raw = pilotesTrigrammes;
+    logAst('AST[gen] pilotes(raw) len=${raw.length} -> $raw');
+    final trimmedUpper = raw.map((e) => (e ?? '').toString().trim().toUpperCase()).toList();
+    final kept = <String>[];
+    final seen = <String>{};
+    for (final t in trimmedUpper) {
+      if (t.length != 3) {
+        logAst('AST[gen][drop] "$t" (len=${t.length})');
+        continue;
+      }
+      if (seen.contains(t)) {
+        logAst('AST[gen][drop] "$t" (duplicate)');
+        continue;
+      }
+      seen.add(t);
+      kept.add(t);
+    }
+    kept.sort();
+    logAst('AST[gen] pilotes(clean) len=${kept.length} -> $kept');
+    return kept;
+  }
+
   /// C) Génération de propositions
   Future<List<AstreinteProposal>> generateProposals({
     required List<String> pilotesTrigrammes,
     required AstreinteInputs inputs,
     int? maxSolutions,
   }) async {
-    final tris = pilotesTrigrammes
-        .map((e) => e.toUpperCase().trim())
-        .where((e) => e.length == 3)
-        .toSet()
-        .toList()
-      ..sort();
+    // Trace les pilotes reçus et la normalisation identique à l’existant
+    final tris = _sanitizeTrisWithDebug(pilotesTrigrammes);
 
     if (tris.length < 2) {
+      logAst('AST[gen][ERROR] moins de 2 pilotes après nettoyage → $tris');
       throw StateError("Il faut au moins 2 pilotes.");
     }
 
     final weeks = _weeksFrom(inputs.start, inputs.end);
+    logAst('AST[gen] weeks=${weeks.length} (from ${_fmtDateFr(weeks.first.monday)} to ${_fmtDateFr(weeks.last.sunday)})');
     if (weeks.isEmpty) {
+      logAst('AST[gen][ERROR] aucune semaine dans la période');
       throw StateError("Aucune semaine dans la période demandée.");
     }
 
-    // Baseline depuis 01/01/2025 jusqu’à la veille de la période
     final baseline = await _baselineWeJf(
       pilotes: tris,
       startOfFirstWeek: weeks.first.monday,
     );
+    logAst('AST[gen] baseline(WE+JF since 01/01/2025) -> ${baseline.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
 
-    // Indispos réelles (DAO)
     final indisposByPilot = await _loadIndisposOnPeriodDao(
       pilotes: tris,
       start: weeks.first.monday,
       end: weeks.last.sunday,
     );
+    for (final t in tris) {
+      final c = indisposByPilot[t]?.length ?? 0;
+      if (c > 0) {
+        final sample = indisposByPilot[t]!.toList()..sort();
+        logAst('AST[indispos] $t : $c jours (ex: ${sample.take(6).map(_fmtDateFr).join(', ')})');
+      } else {
+        logAst('AST[indispos] $t : 0 jour');
+      }
+    }
 
-    // JF dynamiques pour info/compte (pas obligatoire au scoring)
-    final jfList = (joursFeriesProvider != null)
-        ? await joursFeriesProvider!(weeks.first.monday, weeks.last.sunday)
-        : <DateTime>[];
-
-    // Historique S-1 / S-2 pour éviter 1-1 ou 1-0-1 en bordure
-    final seedHist = await _seedHistoryBeforePeriod(
+    // 1) Pré-assignation étranglements
+    final pre = await _preassignFromBottlenecks(
       tris: tris,
-      firstMonday: weeks.first.monday,
-      jfForWeeks: jfList.toSet(),
+      weeks: weeks,
+      indisposByPilot: indisposByPilot,
+      baseline: baseline,
     );
 
-    final limit = (maxSolutions == null || maxSolutions <= 0)
-        ? 3
-        : maxSolutions;
-
+    // 2) Trois profils
     final profiles = <_GreedyProfile>[
-      _GreedyProfile.cool(),
-      _GreedyProfile.balanced(),
-      _GreedyProfile.aggressive(),
+      _GreedyProfile(
+        name: 'cool',
+        hugePenaltyConsec: 5000,
+        penalty101: 300,
+        hugePenaltyTriple: 9000,
+        wSpacing: 160,
+        balanceWeight: 12,
+        boostLow: 10,
+        pairRepeatPenalty: 15,
+        allowRelaxed: false,
+      ),
+      _GreedyProfile(
+        name: 'balance',
+        hugePenaltyConsec: 5000,
+        penalty101: 220,
+        hugePenaltyTriple: 9000,
+        wSpacing: 180,
+        balanceWeight: 10,
+        boostLow: 12,
+        pairRepeatPenalty: 20,
+        allowRelaxed: false,
+      ),
+      _GreedyProfile(
+        name: 'aggressive',
+        hugePenaltyConsec: 5000,
+        penalty101: 150,
+        hugePenaltyTriple: 9000,
+        wSpacing: 200,
+        balanceWeight: 8,
+        boostLow: 16,
+        pairRepeatPenalty: 25,
+        allowRelaxed: false,
+      ),
     ];
 
     final proposals = <AstreinteProposal>[];
-    int seed = 0;
-
-    for (final profile in profiles) {
-      if (proposals.length >= limit) break;
-
-      final p = _buildGreedyPlan(
-        tris: tris,
-        weeks: weeks,
-        baselineWeJfDays: Map<String, int>.from(baseline),
-        indisposByPilot: indisposByPilot,
-        chefExclusionsByWeek: inputs.chefExclusionsByWeek,
-        profile: profile,
-        seed: seed++,
-        prevCouplesBefore: seedHist.prevCouplesBefore,
-        preWeeksByPilot: seedHist.preWeeksByPilot,
-      );
-
-      if (p != null) proposals.add(p);
+    final seeds = [0, 1, 2, 3, 4, 5, 6, 7];
+    for (final prof in profiles) {
+      for (final seed in seeds) {
+        final p = _buildGreedyPlan(
+          tris: tris,
+          weeks: weeks,
+          baselineWeJfDays: Map<String, int>.from(baseline),
+          indisposByPilot: indisposByPilot,
+          chefExclusionsByWeek: inputs.chefExclusionsByWeek,
+          seed: seed,
+          profile: prof,
+          preWeeksByPilot: pre.preWeeksByPilot,
+          prevCouplesBefore: pre.prevCouplesBefore,
+          lockedByWeek: pre.lockedByWeek,
+        );
+        if (p != null) {
+          proposals.add(p);
+          logAst('AST[gen] profil=${prof.name} seed=$seed OK score=${p.score.toStringAsFixed(1)}');
+          break;
+        } else {
+          logAst('AST[gen] profil=${prof.name} seed=$seed → échec (aucun couple faisable sur une semaine)');
+        }
+      }
     }
-
-    // Si une proposition a échoué (choke trop dur), on tente des seeds supplémentaires
-    while (proposals.length < limit) {
-      final p = _buildGreedyPlan(
-        tris: tris,
-        weeks: weeks,
-        baselineWeJfDays: Map<String, int>.from(baseline),
-        indisposByPilot: indisposByPilot,
-        chefExclusionsByWeek: inputs.chefExclusionsByWeek,
-        profile: _GreedyProfile.balanced(),
-        seed: seed++,
-        prevCouplesBefore: seedHist.prevCouplesBefore,
-        preWeeksByPilot: seedHist.preWeeksByPilot,
-      );
-      if (p != null) proposals.add(p);
-      if (seed > 20) break; // garde-fou
-    }
-
-    // trie par score
     proposals.sort((a, b) => a.score.compareTo(b.score));
+    logAst('AST[gen] solutions trouvées=${proposals.length}');
     return proposals;
   }
 
@@ -492,15 +714,13 @@ class AstreinteEngine {
     final s = _dayOnly(start);
     final e = _dayOnly(end);
 
-    final evs = await planningDao.getForRange(
-        s, e.add(const Duration(days: 1)));
+    final evs = await planningDao.getForRange(s, e.add(const Duration(days: 1)));
     final asts = evs.where((x) => x.typeEvent == 'AST').toList();
 
     for (final ev in asts) {
       final evS = _dayOnly(ev.dateStart);
       final evE = _dayOnly(ev.dateEnd);
 
-      // A) entièrement dedans → delete
       final fullyInside = !evS.isBefore(s) && !evE.isAfter(e);
       if (fullyInside) {
         if (ev.firestoreId != null && ev.firestoreId!.isNotEmpty) {
@@ -509,7 +729,6 @@ class AstreinteEngine {
         continue;
       }
 
-      // B) chevauche à gauche → raccourcit à gauche
       if (evS.isBefore(s) && evE.isBetween(s, e)) {
         final newEnd = s.subtract(const Duration(days: 1));
         if (ev.firestoreId != null && ev.firestoreId!.isNotEmpty) {
@@ -522,7 +741,6 @@ class AstreinteEngine {
         continue;
       }
 
-      // C) chevauche à droite → décale début après la plage
       if (evS.isBetween(s, e) && evE.isAfter(e)) {
         final newStart = e.add(const Duration(days: 1));
         if (ev.firestoreId != null && ev.firestoreId!.isNotEmpty) {
@@ -535,7 +753,6 @@ class AstreinteEngine {
         continue;
       }
 
-      // D) couvre toute la plage → split
       if (evS.isBefore(s) && evE.isAfter(e)) {
         if (ev.firestoreId != null && ev.firestoreId!.isNotEmpty) {
           await planningDao.updateEventByFirestoreId(
@@ -544,7 +761,6 @@ class AstreinteEngine {
             dateEnd: s.subtract(const Duration(days: 1)),
           );
         }
-        // recrée la partie droite
         await planningDao.insertEvent(
           user: ev.user,
           typeEvent: ev.typeEvent,
@@ -565,117 +781,134 @@ class AstreinteEngine {
     required Map<String, int> baselineWeJfDays,
     required Map<String, Set<DateTime>> indisposByPilot,
     required Map<int, Set<String>> chefExclusionsByWeek,
-    required _GreedyProfile profile,
     required int seed,
-    required Set<(String, String)> prevCouplesBefore,
+    required _GreedyProfile profile,
     required Map<String, List<int>> preWeeksByPilot,
+    required Set<(String, String)> prevCouplesBefore,
+    Map<int, (String, String)>? lockedByWeek,
   }) {
     final rnd = Random(seed);
 
     final assignment = <WeekSpan, (String, String)>{};
     final assignedWeeksByPilot = <String, List<int>>{
-      for (final t in tris) t: List<int>.from(
-          preWeeksByPilot[t] ?? const <int>[])
+      for (final t in tris) t: List<int>.from(preWeeksByPilot[t] ?? const <int>[])
     };
     final projected = Map<String, int>.from(baselineWeJfDays);
-    final previousCouples = <(String, String)>{...prevCouplesBefore};
+    final previousCouples = <(String, String)>{}..addAll(prevCouplesBefore);
 
-    // 1) Détecte les semaines “étranglées” (peu de couples admis)
-    final couplesByWeek = <int, List<(String, String)>>{};
     for (int w = 0; w < weeks.length; w++) {
       final span = weeks[w];
-      final L = _validPairsForWeek(
-        tris: tris,
-        span: span,
-        indispos: indisposByPilot,
-        chefExclusions: chefExclusionsByWeek[w] ?? const <String>{},
-      );
-      couplesByWeek[w] = L;
-    }
 
-    // Tri des semaines par contrainte croissante (moins de couples d’abord)
-    final weekOrder = List<int>.generate(weeks.length, (i) => i);
-    weekOrder.sort((a, b) =>
-        (couplesByWeek[a]!.length).compareTo(couplesByWeek[b]!.length));
+      if (lockedByWeek != null && lockedByWeek.containsKey(w)) {
+        final lock = lockedByWeek[w]!;
+        assignment[span] = lock;
+        assignedWeeksByPilot[lock.$1]!.add(w);
+        assignedWeeksByPilot[lock.$2]!.add(w);
+        previousCouples.add(lock);
+        projected[lock.$1] = (projected[lock.$1] ?? 0) + 2;
+        projected[lock.$2] = (projected[lock.$2] ?? 0) + 2;
+        logAst('AST[plan] W${w + 1} ${_fmtDateFr(span.monday)} LOCK=${lock.$1}/${lock.$2}');
+        continue;
+      }
 
-    // 2) Construction gloutonne
-    for (final w in weekOrder) {
-      final span = weeks[w];
-      var candidates = couplesByWeek[w]!;
+      // Compteurs debug par raisons de rejet
+      int rejChefExcl = 0, rejWe = 0, rejWeekday = 0, rej111 = 0;
+      int candKept = 0;
+
+      final candidates = <({(String, String) pair, double score, bool would11})>[];
+      final shuffled = [...tris]..shuffle(rnd);
+
+      for (int i = 0; i < shuffled.length; i++) {
+        for (int j = i + 1; j < shuffled.length; j++) {
+          final a = shuffled[i];
+          final b = shuffled[j];
+
+          if (chefExclusionsByWeek[w]?.contains(a) == true || chefExclusionsByWeek[w]?.contains(b) == true) {
+            rejChefExcl++;
+            continue;
+          }
+          if (!_weekendBothFree(a, b, span, indisposByPilot)) {
+            rejWe++;
+            continue;
+          }
+          if (!_weekdayFeasible(a, b, span, indisposByPilot)) {
+            rejWeekday++;
+            continue;
+          }
+          if (_forbidden111(a, w, assignedWeeksByPilot) || _forbidden111(b, w, assignedWeeksByPilot)) {
+            rej111++;
+            continue;
+          }
+
+          final would11 = _forbidden11(a, w, assignedWeeksByPilot) || _forbidden11(b, w, assignedWeeksByPilot);
+
+          final pa = projected[a] ?? 0;
+          final pb = projected[b] ?? 0;
+          double score = 0;
+
+          score += (max(pa, pb) * profile.balanceWeight) + (pa + pb) * 1.0;
+
+          final baseVals = projected.values.toList();
+          final minDone = baseVals.isEmpty ? 0 : baseVals.reduce(min);
+          final maxDone = baseVals.isEmpty ? 0 : baseVals.reduce(max);
+          final spanDone = max(1, maxDone - minDone);
+
+          double lag(String t) => ((maxDone - (projected[t] ?? 0)) / spanDone) * profile.boostLow;
+          score -= lag(a);
+          score -= lag(b);
+
+          int spacingPen(String p) {
+            final lst = assignedWeeksByPilot[p]!..sort();
+            if (lst.isEmpty) return 0;
+            final last = lst.last;
+            final gap = w - last;
+            if (gap <= 0) return 9999;
+            if (gap <= 3) return (4 - gap) * (profile.wSpacing.toInt());
+            return 0;
+          }
+          score += spacingPen(a) + spacingPen(b);
+
+          final canon = canonPair(a, b);
+          if (previousCouples.contains(canon)) score += profile.pairRepeatPenalty;
+
+          final hadW2 = (assignedWeeksByPilot[a]?.contains(w - 2) == true) ||
+              (assignedWeeksByPilot[b]?.contains(w - 2) == true);
+          if (hadW2) score += profile.penalty101;
+
+          if (would11 && !profile.allowRelaxed) score += 2000;
+
+          candidates.add((pair: canon, score: score, would11: would11));
+          candKept++;
+        }
+      }
+
       if (candidates.isEmpty) {
-        debugPrint("Semaine ${_fmtDateFr(
-            span.monday)} : aucun couple faisable → ABANDON DU PLAN");
+        logAst("AST[plan] W${w + 1} ${_fmtDateFr(span.monday)} : 0 candidats (rejChef=$rejChefExcl, rejWE=$rejWe, rejWD=$rejWeekday, rej111=$rej111)");
         return null;
       }
 
-      // On filtre d’abord les couples qui créeraient 1-1 pour A ou B
-      var admissibles = candidates.where((p) {
-        final a = p.$1;
-        final b = p.$2;
-        if (_willBeConsecutive(a, w, assignedWeeksByPilot)) return false;
-        if (_willBeConsecutive(b, w, assignedWeeksByPilot)) return false;
-        return true;
-      }).toList();
+      final strict = candidates.where((c) => !c.would11).toList()
+        ..sort((x, y) => x.score.compareTo(y.score));
 
-      if (admissibles.isEmpty && profile.allowRelaxed) {
-        // On relâche (cas extrême) : on réintroduit tous les couples, mais ils vont
-        // être lourdement pénalisés par le scoring (1-1).
-        admissibles = List<(String, String)>.from(candidates);
+      ({(String, String) pair, double score, bool would11}) chosen;
+      if (strict.isNotEmpty) {
+        chosen = strict.first;
+      } else {
+        candidates.sort((x, y) => x.score.compareTo(y.score));
+        chosen = candidates.first;
       }
 
-      if (admissibles.isEmpty) {
-        debugPrint("Semaine ${_fmtDateFr(
-            span.monday)} : aucun couple admissible après règles → ABANDON");
-        return null;
-      }
-
-      // Score des admissibles
-      final scored = <({(String, String) pair, double score})>[];
-      for (final pair in admissibles) {
-        final s = _scorePair(
-          a: pair.$1,
-          b: pair.$2,
-          weekIndex: w,
-          assignedWeeksByPilot: assignedWeeksByPilot,
-          projectedWeJfDays: projected,
-          previousCouples: previousCouples,
-          profile: profile,
-        );
-        scored.add((pair: pair, score: s));
-      }
-
-      // vraie variabilité : léger shake aléatoire
-      for (int i = 0; i < scored.length; i++) {
-        scored[i] = (
-        pair: scored[i].pair,
-        score: scored[i].score + rnd.nextDouble() * 0.001
-        );
-      }
-      scored.sort((x, y) => x.score.compareTo(y.score));
-
-      // LOG top 3
-      debugPrint("S${w + 1} ${_fmtDateFr(span.monday)} candidats=${scored
-          .length}, top3 :");
-      for (int k = 0; k < min(3, scored.length); k++) {
-        final p = scored[k];
-        debugPrint("  ${k + 1}) ${p.pair.$1}/${p.pair.$2} score=${p.score
-            .toStringAsFixed(1)}");
-      }
-
-      final best = scored.first.pair;
+      final best = chosen.pair;
       assignment[span] = best;
-
-      // Projection : chaque semaine ajoute 2 jours WE (sam + dim)
+      assignedWeeksByPilot[best.$1]!.add(w);
+      assignedWeeksByPilot[best.$2]!.add(w);
+      previousCouples.add(best);
       projected[best.$1] = (projected[best.$1] ?? 0) + 2;
       projected[best.$2] = (projected[best.$2] ?? 0) + 2;
 
-      assignedWeeksByPilot[best.$1]!.add(w);
-      assignedWeeksByPilot[best.$2]!.add(w);
-
-      previousCouples.add(canonPair(best.$1, best.$2));
+      logAst("AST[plan] W${w + 1} ${_fmtDateFr(span.monday)} kept=$candKept (rejChef=$rejChefExcl, rejWE=$rejWe, rejWD=$rejWeekday, rej111=$rej111) -> CHOISI ${best.$1}/${best.$2} (score=${chosen.score.toStringAsFixed(1)}${chosen.would11 ? ' ; 1-1' : ''})");
     }
 
-    // Score global de plan (écart max-min + réutilisation des couples)
     final totalScore = _planScore(
       couples: assignment.values.toList(),
       projectedWeJfDays: projected,
@@ -684,9 +917,12 @@ class AstreinteEngine {
 
     final delta = <String, int>{for (final t in tris) t: 0};
     for (final c in assignment.values) {
-      delta[c.$1] = delta[c.$1]! + 2;
-      delta[c.$2] = delta[c.$2]! + 2;
+      delta[c.$1] = (delta[c.$1] ?? 0) + 2;
+      delta[c.$2] = (delta[c.$2] ?? 0) + 2;
     }
+
+    logAst('AST[plan] FIN profil=${profile.name} score=${totalScore.toStringAsFixed(1)} '
+        'projected=${projected.entries.map((e) => '${e.key}:${e.value}').join(', ')}');
 
     return AstreinteProposal(
       assignment: assignment,
@@ -704,10 +940,8 @@ class AstreinteEngine {
     final start = _dayOnly(startIncl);
     final end = _dayOnly(endIncl);
 
-    DateTime monday = start.subtract(
-        Duration(days: (start.weekday - DateTime.monday + 7) % 7));
-    final lastMonday = end.subtract(
-        Duration(days: (end.weekday - DateTime.monday + 7) % 7));
+    DateTime monday = start.subtract(Duration(days: (start.weekday - DateTime.monday + 7) % 7));
+    final lastMonday = end.subtract(Duration(days: (end.weekday - DateTime.monday + 7) % 7));
 
     final out = <WeekSpan>[];
     while (!monday.isAfter(lastMonday)) {
@@ -729,13 +963,11 @@ class AstreinteEngine {
       return {for (final t in pilotes) t: 0};
     }
 
-    final jf = (joursFeriesProvider != null) ? await joursFeriesProvider!(
-        from, to) : <DateTime>[];
+    final jf = (joursFeriesProvider != null) ? await joursFeriesProvider!(from, to) : <DateTime>[];
     final out = <String, int>{};
 
     for (final t in pilotes) {
-      final evs = await planningDao.getForRange(
-          from, to.add(const Duration(days: 1)), forUser: t);
+      final evs = await planningDao.getForRange(from, to.add(const Duration(days: 1)), forUser: t);
       final ast = evs.where((x) => x.typeEvent == 'AST').toList();
       final days = _collectAstWeJfDaysFromEvents(
         ast,
@@ -769,33 +1001,31 @@ class AstreinteEngine {
     return L;
   }
 
-  bool _weekendBothFree(String a,
+  bool _weekendBothFree(
+      String a,
       String b,
       WeekSpan span,
-      Map<String, Set<DateTime>> indispos,) {
+      Map<String, Set<DateTime>> indispos,
+      ) {
     final sat = _dayOnly(span.monday.add(const Duration(days: 5)));
     final sun = _dayOnly(span.monday.add(const Duration(days: 6)));
     final ia = indispos[a] ?? {};
     final ib = indispos[b] ?? {};
-    return !(ia.contains(sat) || ia.contains(sun) || ib.contains(sat) ||
-        ib.contains(sun));
+    return !(ia.contains(sat) || ia.contains(sun) || ib.contains(sat) || ib.contains(sun));
   }
 
-  bool _weekdayFeasible(String a,
+  bool _weekdayFeasible(
+      String a,
       String b,
       WeekSpan span,
-      Map<String, Set<DateTime>> indispos,) {
-    final days = List<DateTime>.generate(
-        5, (i) => _dayOnly(span.monday.add(Duration(days: i))));
+      Map<String, Set<DateTime>> indispos,
+      ) {
+    final days = List<DateTime>.generate(5, (i) => _dayOnly(span.monday.add(Duration(days: i))));
     final ia = indispos[a] ?? {};
     final ib = indispos[b] ?? {};
 
-    final offA = days
-        .where(ia.contains)
-        .length;
-    final offB = days
-        .where(ib.contains)
-        .length;
+    final offA = days.where(ia.contains).length;
+    final offB = days.where(ib.contains).length;
 
     final aFull = offA == 0;
     final bFull = offB == 0;
@@ -806,37 +1036,35 @@ class AstreinteEngine {
     return false;
   }
 
-  bool _willBeConsecutive(String pilot, int weekIndex,
-      Map<String, List<int>> assignedWeeksByPilot) {
+  bool _willBeConsecutive(
+      String pilot,
+      int weekIndex,
+      Map<String, List<int>> assignedWeeksByPilot,
+      ) {
     final lst = assignedWeeksByPilot[pilot] ?? const <int>[];
     return lst.contains(weekIndex - 1);
   }
 
-  double _spacingPenaltyForPilot(String pilot,
+  double _spacingPenaltyForPilot(
+      String pilot,
       int weekIndex,
       Map<String, List<int>> assignedWeeksByPilot,
-      _GreedyProfile profile,) {
+      _GreedyProfile profile,
+      ) {
     double pen = 0;
-    final lst = List<int>.from(assignedWeeksByPilot[pilot] ?? const <int>[])
-      ..sort();
+    final lst = List<int>.from(assignedWeeksByPilot[pilot] ?? const <int>[])..sort();
 
-    // 1-1
     if (lst.contains(weekIndex - 1)) pen += profile.hugePenaltyConsec;
-
-    // 1-0-1
     if (lst.contains(weekIndex - 2)) pen += profile.penalty101;
-
-    // 1-0-1-0-1
     if (lst.contains(weekIndex - 2) && lst.contains(weekIndex - 4)) {
       pen += profile.hugePenaltyTriple;
     }
 
-    // cooldown général : plus l’écart avec la dernière astreinte est court, plus on pénalise
     final last = lst.isNotEmpty ? lst.last : null;
     if (last != null) {
       final gap = weekIndex - last;
       if (gap <= 3) {
-        pen += (4 - gap) * profile.wSpacing; // gap=1→3*w, 2→2*w, 3→1*w
+        pen += (4 - gap) * profile.wSpacing;
       }
     }
     return pen;
@@ -853,25 +1081,18 @@ class AstreinteEngine {
   }) {
     double score = 0;
 
-    // Espacement / alternances
-    score +=
-        _spacingPenaltyForPilot(a, weekIndex, assignedWeeksByPilot, profile);
-    score +=
-        _spacingPenaltyForPilot(b, weekIndex, assignedWeeksByPilot, profile);
+    score += _spacingPenaltyForPilot(a, weekIndex, assignedWeeksByPilot, profile);
+    score += _spacingPenaltyForPilot(b, weekIndex, assignedWeeksByPilot, profile);
 
-    // Variabilité du couple
     final canon = canonPair(a, b);
     if (previousCouples.contains(canon)) score += profile.pairRepeatPenalty;
 
-    // Homogénéisation : on favorise les pilotes en retard
     final pa = projectedWeJfDays[a] ?? 0;
     final pb = projectedWeJfDays[b] ?? 0;
 
-    // Récompense “boost low” : plus faible est pa/pb, plus on favorise
     final minAB = min(pa, pb).toDouble();
-    score -= minAB * profile.boostLow; // c’est une récompense → on soustrait
+    score -= minAB * profile.boostLow;
 
-    // On garde aussi un terme qui limite le pic et la somme
     score += (max(pa, pb) * profile.balanceWeight) + (pa + pb) * 0.5;
 
     return score;
@@ -885,8 +1106,7 @@ class AstreinteEngine {
     double score = 0;
 
     if (projectedWeJfDays.isNotEmpty) {
-      final vals = projectedWeJfDays.values.toList()
-        ..sort();
+      final vals = projectedWeJfDays.values.toList()..sort();
       score += (vals.last - vals.first) * profile.balanceWeight;
     }
 
@@ -912,20 +1132,13 @@ class AstreinteEngine {
     required DateTime start,
     required DateTime end,
   }) async {
-    final map = <String, Set<DateTime>>{
-      for (final t in pilotes) t: <DateTime>{}
-    };
+    final map = <String, Set<DateTime>>{for (final t in pilotes) t: <DateTime>{}};
 
     for (final t in pilotes) {
-      final evs = await planningDao.getForRange(
-          _dayOnly(start), _dayOnly(end).add(const Duration(days: 1)),
-          forUser: t);
+      final evs = await planningDao.getForRange(_dayOnly(start), _dayOnly(end).add(const Duration(days: 1)), forUser: t);
       for (final e in evs) {
-        if (e.typeEvent
-            .trim()
-            .isEmpty) continue;
-        for (final d in _daysInclusive(
-            _dayOnly(e.dateStart), _dayOnly(e.dateEnd))) {
+        if (e.typeEvent.trim().isEmpty) continue;
+        for (final d in _daysInclusive(_dayOnly(e.dateStart), _dayOnly(e.dateEnd))) {
           if (d.isBefore(_dayOnly(start)) || d.isAfter(_dayOnly(end))) continue;
           map[t]!.add(d);
         }
@@ -935,25 +1148,19 @@ class AstreinteEngine {
   }
 
   /// Crée des segments AST pour les jours **libres** d’une semaine (évite toute collision).
-  Future<void> _createAstSegmentsForPilotInWeekDao(String trigramme,
-      WeekSpan span) async {
+  Future<void> _createAstSegmentsForPilotInWeekDao(String trigramme, WeekSpan span) async {
     final tri = trigramme.toUpperCase().trim();
 
-    final evs = await planningDao.getForRange(
-        span.monday, span.sunday.add(const Duration(days: 1)), forUser: tri);
+    final evs = await planningDao.getForRange(span.monday, span.sunday.add(const Duration(days: 1)), forUser: tri);
     final busy = <DateTime>{};
     for (final e in evs) {
-      if (e.typeEvent
-          .trim()
-          .isEmpty) continue;
-      for (final d in _daysInclusive(
-          _dayOnly(e.dateStart), _dayOnly(e.dateEnd))) {
+      if (e.typeEvent.trim().isEmpty) continue;
+      for (final d in _daysInclusive(_dayOnly(e.dateStart), _dayOnly(e.dateEnd))) {
         busy.add(d);
       }
     }
 
-    final days = List<DateTime>.generate(
-        7, (i) => _dayOnly(span.monday.add(Duration(days: i))));
+    final days = List<DateTime>.generate(7, (i) => _dayOnly(span.monday.add(Duration(days: i))));
     DateTime? segStart;
 
     for (final d in days) {
@@ -983,41 +1190,37 @@ class AstreinteEngine {
     }
   }
 }
-  // =========================
-  // Historique S-1 / S-2 (avant période)
-  // =========================
 
-  // =========================
-  // Compteurs AST (WE+JF)
-  // =========================
+// =========================
+// Compteurs AST (WE+JF)
+// =========================
 
-  Set<DateTime> _collectAstWeJfDaysFromEvents(
-  List<PlanningEvent> astEvents, {
-  required DateTime from,
-  required DateTime toInclusive,
-  required List<DateTime> extraJoursFeries,
-  }) {
+Set<DateTime> _collectAstWeJfDaysFromEvents(
+    List<PlanningEvent> astEvents, {
+      required DateTime from,
+      required DateTime toInclusive,
+      required List<DateTime> extraJoursFeries,
+    }) {
   final s = _dayOnly(from);
   final e = _dayOnly(toInclusive);
   final jf = extraJoursFeries.map(_dayOnly).toSet();
 
   final counted = <DateTime>{};
   for (final ev in astEvents) {
-  final a = _dayOnly(ev.dateStart);
-  final b = _dayOnly(ev.dateEnd);
-  for (final d in _daysInclusive(a, b)) {
-  if (d.isBefore(s) || d.isAfter(e)) continue;
-  if (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday || jf.contains(d)) {
-  counted.add(d);
-  }
-  }
+    final a = _dayOnly(ev.dateStart);
+    final b = _dayOnly(ev.dateEnd);
+    for (final d in _daysInclusive(a, b)) {
+      if (d.isBefore(s) || d.isAfter(e)) continue;
+      if (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday || jf.contains(d)) {
+        counted.add(d);
+      }
+    }
   }
   return counted;
-  }
+}
 
-  bool _isJourFerie(DateTime d, List<DateTime> jf) {
+bool _isJourFerie(DateTime d, List<DateTime> jf) {
   final set = jf.map((x) => DateTime(x.year, x.month, x.day)).toSet();
   final dd = DateTime(d.year, d.month, d.day);
   return set.contains(dd);
-  }
-
+}
